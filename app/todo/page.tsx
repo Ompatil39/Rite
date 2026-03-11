@@ -83,9 +83,20 @@ export default function TodoList() {
         </AnimatePresence>
         
         {todos.length === 0 && (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 14 }}>
-            No tasks yet. Add one above!
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+            style={{ textAlign: "center", padding: "80px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-surface)", border: "1px dashed var(--border-focus)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
+              <Check size={28} opacity={0.5} />
+            </div>
+            <div>
+              <p style={{ color: "var(--text-main)", fontWeight: 600, marginBottom: 4 }}>You're all caught up</p>
+              <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Add a task above to get started.</p>
+            </div>
+          </motion.div>
         )}
       </div>
     </div>

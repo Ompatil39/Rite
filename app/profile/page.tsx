@@ -129,34 +129,85 @@ export default function ProfileDashboard() {
   return (
     <div className="page-enter" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
       {!isLoggedIn ? (
-        <div style={{
-          background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 16,
-          padding: 48, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 24
-        }}>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          style={{
+            background: "linear-gradient(145deg, var(--bg-surface), var(--bg-surface-hover))",
+            border: "1px solid var(--border-main)",
+            borderRadius: 24,
+            padding: "56px 40px",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 28,
+            boxShadow: "0 24px 48px var(--shadow-alpha)",
+            position: "relative",
+            overflow: "hidden"
+          }}
+        >
+          {/* Subtle background glow */}
+          <div style={{
+            position: "absolute",
+            top: -100,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 300,
+            height: 300,
+            background: "var(--accent)",
+            opacity: 0.08,
+            filter: "blur(60px)",
+            borderRadius: "50%",
+            pointerEvents: "none"
+          }} />
+
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", damping: 20, stiffness: 200, delay: 0.2 }}
+            style={{ 
+              width: 80, height: 80, borderRadius: "50%", 
+              background: "var(--bg-base)", border: "1px solid var(--border-main)",
+              display: "flex", alignItems: "center", justifyContent: "center", 
+              color: "var(--accent)",
+              boxShadow: "0 8px 16px var(--shadow-alpha)"
+            }}
+          >
             <User size={32} />
-          </div>
-          <div>
-            <h2 style={{ fontSize: 24, fontWeight: 600, color: "var(--text-main)", marginBottom: 8 }}>Sign in to sync your data</h2>
-            <p style={{ fontSize: 14, color: "var(--text-muted)", maxWidth: 400, margin: "0 auto" }}>
-              Connect your Google account to securely save your habits and to-do lists across devices.
+          </motion.div>
+
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <h2 style={{ fontSize: 28, fontWeight: 600, color: "var(--text-main)", marginBottom: 12, letterSpacing: "-0.02em" }}>Sign in to sync your data</h2>
+            <p style={{ fontSize: 15, color: "var(--text-muted)", maxWidth: 400, margin: "0 auto", lineHeight: 1.5 }}>
+              Connect your Google account to securely save your habits and to-do lists across devices. Never lose your streaks again.
             </p>
           </div>
-          <button
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleLogin}
             style={{
               display: "flex", alignItems: "center", gap: 12,
               background: "var(--text-main)", color: "var(--bg-base)", border: "none",
-              padding: "12px 24px", borderRadius: 999, fontSize: 15, fontWeight: 600,
-              cursor: "pointer", transition: "transform 0.15s, filter 0.15s"
+              padding: "14px 28px", borderRadius: 999, fontSize: 15, fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
+              position: "relative", zIndex: 1,
+              marginTop: 8
             }}
-            onMouseEnter={e => e.currentTarget.style.filter = "brightness(0.9)"}
-            onMouseLeave={e => e.currentTarget.style.filter = "brightness(1)"}
           >
-            <LogIn size={18} />
-            Sign in with Google
-          </button>
-        </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M22.56 12.25C22.56 11.47 22.49 10.73 22.36 10H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.75h3.57c2.09-1.93 3.28-4.78 3.28-8.32z" fill="currentColor"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.75c-.99.66-2.26 1.05-3.71 1.05-2.86 0-5.28-1.93-6.14-4.52H2.18v2.84C4.01 20.61 7.72 23 12 23z" fill="currentColor"/>
+              <path d="M5.86 14.12c-.22-.66-.35-1.36-.35-2.12s.13-1.46.35-2.12V7.04H2.18C1.43 8.53 1 10.21 1 12s.43 3.47 1.18 4.96l3.68-2.84z" fill="currentColor"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.2 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.39 2.18 7.04l3.68 2.84c.86-2.59 3.28-4.5 6.14-4.5z" fill="currentColor"/>
+            </svg>
+            Continue with Google
+          </motion.button>
+        </motion.div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
           <AnimatePresence>

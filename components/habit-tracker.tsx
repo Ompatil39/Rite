@@ -257,7 +257,139 @@ export default function App() {
     }
   };
 
+  const suggestedHabits = [
+    { name: "Drink 8 glasses of water", category: "Health" },
+    { name: "Read for 20 minutes", category: "Growth" },
+    { name: "Exercise for 30 minutes", category: "Health" },
+    { name: "Meditate for 10 minutes", category: "Mindfulness" },
+    { name: "Journal before bed", category: "Mindfulness" },
+    { name: "No social media before noon", category: "Focus" },
+  ];
+
+  const addSuggestedHabit = (name: string, category: string) => {
+    setHabits(prev => [...prev, { name, category, days: Array(31).fill(STATUS.NONE), id: Math.random() }]);
+  };
+
   if (!mounted) return null;
+
+  // ── EMPTY STATE / ONBOARDING ──
+  if (habits.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "transparent", color: "inherit", fontFamily: "var(--font-body), sans-serif", overflowX: "hidden" }}>
+        <style>{`
+          @keyframes emptyFadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+          .empty-suggest {
+            background: none;
+            border: 1px solid var(--border-main);
+            border-radius: 10px;
+            padding: 12px 18px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+            font-family: var(--font-body), sans-serif;
+            color: var(--text-main);
+            width: 100%;
+          }
+          .empty-suggest:hover {
+            border-color: var(--accent);
+            background: var(--bg-surface);
+          }
+          .empty-suggest:active { transform: scale(0.98); }
+          .empty-suggest .cat-label {
+            font-size: 11px;
+            font-family: var(--font-mono), monospace;
+            color: var(--text-muted);
+            letter-spacing: 0.06em;
+          }
+          :root.light .empty-suggest:hover { background: #ffffff; }
+        `}</style>
+
+        <div className="page-container" style={{ maxWidth: 480, margin: "0 auto", padding: "0 24px 88px" }}>
+
+          {/* Heading */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            style={{ textAlign: "center", marginBottom: 40 }}
+          >
+            <p style={{
+              fontSize: 14,
+              color: "var(--text-muted)",
+              lineHeight: 1.6,
+            }}>
+              No habits yet. Add one below or pick a suggestion.
+            </p>
+          </motion.div>
+
+          {/* Suggestions */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.25 }}
+            style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 32 }}
+          >
+            <span style={{
+              fontFamily: "var(--font-mono), monospace",
+              fontSize: 10,
+              letterSpacing: "0.15em",
+              color: "var(--text-muted)",
+              textTransform: "uppercase",
+              marginBottom: 4,
+            }}>
+              Suggestions
+            </span>
+            {suggestedHabits.map((h) => (
+              <button
+                key={h.name}
+                className="empty-suggest"
+                onClick={() => addSuggestedHabit(h.name, h.category)}
+              >
+                <span>{h.name}</span>
+                <span className="cat-label">{h.category}</span>
+              </button>
+            ))}
+          </motion.div>
+
+          {/* Add your own */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+          >
+            <div className={`add-wrap${inputFocused ? " focused" : ""}`}>
+              <input
+                className="add-input"
+                placeholder="Cultivate a new habit..."
+                value={newHabit}
+                onChange={e => setNewHabit(e.target.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                onKeyDown={e => { if (e.key === "Enter") addHabit(); }}
+              />
+              <input
+                className="add-input add-input-cat"
+                style={{ width: 170, flex: 'none', borderLeft: '1px solid var(--border-main)', paddingLeft: 16, marginLeft: 8 }}
+                placeholder="Category (optional)"
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                onKeyDown={e => { if (e.key === "Enter") addHabit(); }}
+              />
+              <button className="add-btn" onClick={addHabit} title="Add habit" style={{ marginLeft: 8 }}>
+                <Plus size={18} color="#0a0a0a" />
+              </button>
+            </div>
+          </motion.div>
+
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "transparent", color: "inherit", fontFamily: "var(--font-body), sans-serif", overflowX: "hidden" }}>
@@ -311,11 +443,9 @@ export default function App() {
           .month-nav-container { padding: 8px 12px !important; }
         }
 
-        @keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
         @keyframes fadeUp  { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
         @keyframes pillPop { 0%{transform:scale(1)} 45%{transform:scale(1.38);filter:brightness(1.8)} 100%{transform:scale(1)} }
 
-        .page-enter { animation: fadeIn 0.45s ease forwards; }
         .card       { animation: fadeUp 0.45s ease both; }
 
         .pill {
@@ -365,7 +495,7 @@ export default function App() {
           transition: border-color 0.2s, box-shadow 0.2s;
           max-width: 560px;
         }
-        .add-wrap.focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--status-done-glow); }
+        .add-wrap.focused { border-color: var(--accent); }
 
         .add-input {
           background: transparent; border: none;

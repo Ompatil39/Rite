@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Trash2, Plus, Flame, CheckCircle2, ChevronDown, Edit2, GripVertical, Calendar } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import { createClient } from "@/utils/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -40,11 +42,173 @@ function getPct(days: number[], dim: number) {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
 
+// Habit type used throughout the component
+type Habit = {
+  name: string;
+  category: string;
+  days: number[];
+  id: string; // UUID from Supabase
+  sort_order: number;
+};
+
+// ── HEATMAP CALENDAR COMPONENT ──
+function HeatmapCalendar({
+  habitId,
+  user,
+  supabase,
+  heatmapLogs,
+  setHeatmapLogs,
+}: {
+  habitId: string;
+  user: User | null;
+  supabase: ReturnType<typeof createClient>;
+  heatmapLogs: Record<string, Record<string, number>>;
+  setHeatmapLogs: React.Dispatch<React.SetStateAction<Record<string, Record<string, number>>>>;
+}) {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user || heatmapLogs[habitId]) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchYearData = async () => {
+      const today = new Date();
+      const yearAgo = new Date(today);
+      yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+      const startDate = `${yearAgo.getFullYear()}-${String(yearAgo.getMonth() + 1).padStart(2, '0')}-${String(yearAgo.getDate()).padStart(2, '0')}`;
+      const endDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      const { data } = await supabase
+        .from('habit_logs')
+        .select('date, status')
+        .eq('habit_id', habitId)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      const dateMap: Record<string, number> = {};
+      (data || []).forEach((log: any) => {
+        dateMap[log.date] = log.status;
+      });
+
+      setHeatmapLogs(prev => ({ ...prev, [habitId]: dateMap }));
+      setLoading(false);
+    };
+
+    fetchYearData();
+  }, [habitId, user, supabase, heatmapLogs, setHeatmapLogs]);
+
+  const logs = heatmapLogs[habitId] || {};
+
+  // Build 52 weeks of data
+  const weeks: { date: Date; status: number }[][] = [];
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(start.getDate() - 364); // go back ~52 weeks
+  // Align to Sunday
+  start.setDate(start.getDate() - start.getDay());
+
+  let current = new Date(start);
+  let week: { date: Date; status: number }[] = [];
+
+  while (current <= today) {
+    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    week.push({ date: new Date(current), status: logs[dateStr] || 0 });
+
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  if (week.length > 0) weeks.push(week);
+
+  const statusColors: Record<number, string> = {
+    0: 'var(--pill-none)',
+    1: 'var(--status-done)',
+    2: 'var(--status-partial)',
+    3: 'var(--status-missed)',
+  };
+
+  const monthLabels: string[] = [];
+  let lastMonth = -1;
+  weeks.forEach((w, i) => {
+    const m = w[0]?.date.getMonth();
+    if (m !== undefined && m !== lastMonth) {
+      monthLabels.push(MONTHS[m].slice(0, 3));
+      lastMonth = m;
+    } else {
+      monthLabels.push('');
+    }
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      style={{ overflow: 'hidden', marginTop: 8 }}
+    >
+      <div style={{
+        background: 'var(--bg-base)',
+        border: '1px solid var(--border-main)',
+        borderRadius: 10,
+        padding: '12px 16px',
+      }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: 12 }}>Loading...</div>
+        ) : (
+          <>
+            {/* Month labels */}
+            <div style={{ display: 'flex', gap: 2, marginBottom: 4, paddingLeft: 0 }}>
+              {monthLabels.map((label, i) => (
+                <div key={i} style={{ width: 10, fontSize: 9, color: 'var(--text-muted)', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
+                  {label}
+                </div>
+              ))}
+            </div>
+            {/* Grid: 7 rows (days) × N columns (weeks) */}
+            <div style={{ display: 'flex', gap: 2 }}>
+              {weeks.map((w, wi) => (
+                <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {w.map((d, di) => (
+                    <div
+                      key={di}
+                      title={`${d.date.toLocaleDateString()}: ${S[d.status]?.label || 'None'}`}
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 2,
+                        background: statusColors[d.status] || statusColors[0],
+                        opacity: d.date > today ? 0.2 : 1,
+                        transition: 'background 0.15s',
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            {/* Legend */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Less</span>
+              {[0, 2, 1].map(s => (
+                <div key={s} style={{ width: 10, height: 10, borderRadius: 2, background: statusColors[s] }} />
+              ))}
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>More</span>
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
-  const [habits, setHabits] = useState<Array<{name: string, category: string, days: number[], id: number}>>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [newHabit, setNewHabit] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
@@ -55,12 +219,15 @@ export default function App() {
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
-  const [expandedCalendar, setExpandedCalendar] = useState<number | null>(null);
+  const [expandedCalendar, setExpandedCalendar] = useState<string | null>(null);
   const [isMonthView, setIsMonthView] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [touchY, setTouchY] = useState<number | null>(null);
-  const hoveredCellRef = useRef<{hid: number, idx: number} | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [heatmapLogs, setHeatmapLogs] = useState<Record<string, Record<string, number>>>({});
+  const hoveredCellRef = useRef<{hid: string, idx: number} | null>(null);
   const cycleRef = useRef<any>(null);
+  const supabaseRef = useRef(createClient());
 
   const dim = getDaysInMonth(month, year);
   const dayNums = Array.from({ length: dim }, (_, i) => i + 1);
@@ -78,29 +245,116 @@ export default function App() {
   const PILL_H = 42;
   const PILL_GAP = 6;
 
-  const triggerPulse = (hid: number, idx: number) => {
+  const triggerPulse = (hid: string, idx: number) => {
     const key = `${hid}-${idx}`;
     setPulsingCell(key);
     setTimeout(() => setPulsingCell(k => k === key ? null : k), 220);
   };
 
-  function cycleStatus(hid: number, idx: number, reverse = false, pulse = false) {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(50);
+  // Haptic feedback with status-aware vibration patterns
+  function hapticFeedback(nextStatus: number) {
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+    switch (nextStatus) {
+      case STATUS.DONE:    navigator.vibrate(40); break;           // short crisp tap = Done ✓
+      case STATUS.PARTIAL: navigator.vibrate([25, 30, 25]); break; // double tap = Partial
+      case STATUS.MISSED:  navigator.vibrate(80); break;           // longer pulse = Missed
+      case STATUS.NONE:    navigator.vibrate(10); break;           // barely-there = reset
     }
+  }
+
+  function cycleStatus(hid: string, idx: number, reverse = false, pulse = false) {
     setHabits(prev => prev.map(h => {
       if (h.id !== hid) return h;
       const days = [...h.days];
       const cur = days[idx];
-      days[idx] = reverse
+      const next = reverse
         ? (cur === STATUS.NONE ? STATUS.MISSED : cur === STATUS.MISSED ? STATUS.PARTIAL : cur === STATUS.PARTIAL ? STATUS.DONE : STATUS.NONE)
         : (cur === STATUS.NONE ? STATUS.DONE   : cur === STATUS.DONE   ? STATUS.PARTIAL : cur === STATUS.PARTIAL ? STATUS.MISSED : STATUS.NONE);
+      days[idx] = next;
+      hapticFeedback(next);
+
+      // Persist to Supabase
+      if (user) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(idx + 1).padStart(2, '0')}`;
+        if (next === STATUS.NONE) {
+          supabaseRef.current.from('habit_logs').delete().eq('habit_id', hid).eq('date', dateStr).then();
+        } else {
+          supabaseRef.current.from('habit_logs').upsert(
+            { habit_id: hid, date: dateStr, status: next },
+            { onConflict: 'habit_id,date' }
+          ).then();
+        }
+      }
+
       return { ...h, days };
     }));
     if (pulse) triggerPulse(hid, idx);
   }
 
   useEffect(() => { cycleRef.current = cycleStatus; });
+
+  // ── AUTH + DATA LOADING ──
+  const loadHabitsFromDB = useCallback(async (userId: string, m: number, y: number) => {
+    const supabase = supabaseRef.current;
+    const daysInMonth = getDaysInMonth(m, y);
+
+    // Fetch habits
+    const { data: habitsData } = await supabase
+      .from('habits')
+      .select('*')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true });
+
+    if (!habitsData || habitsData.length === 0) {
+      setHabits([]);
+      return;
+    }
+
+    // Fetch logs for this month
+    const startDate = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    const endDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    const habitIds = habitsData.map((h: any) => h.id);
+
+    const { data: logsData } = await supabase
+      .from('habit_logs')
+      .select('*')
+      .in('habit_id', habitIds)
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    // Build logs lookup: { habitId: { dayIndex: status } }
+    const logsMap: Record<string, Record<number, number>> = {};
+    (logsData || []).forEach((log: any) => {
+      if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
+      const day = new Date(log.date + 'T00:00:00').getDate(); // parse date portion
+      logsMap[log.habit_id][day - 1] = log.status;
+    });
+
+    // Assemble habits with days array
+    const assembled: Habit[] = habitsData.map((h: any) => {
+      const days = Array(31).fill(STATUS.NONE);
+      const habitLogs = logsMap[h.id] || {};
+      Object.entries(habitLogs).forEach(([idx, status]) => {
+        days[Number(idx)] = status;
+      });
+      return {
+        id: h.id,
+        name: h.name,
+        category: h.category || 'Uncategorized',
+        sort_order: h.sort_order,
+        days,
+      };
+    });
+
+    setHabits(assembled);
+  }, []);
+
+  // Re-load when month/year changes (for logged-in users)
+  useEffect(() => {
+    if (user) {
+      loadHabitsFromDB(user.id, month, year);
+    }
+  }, [month, year, user, loadHabitsFromDB]);
 
   useEffect(() => {
     setMounted(true);
@@ -112,7 +366,31 @@ export default function App() {
     checkMobile();
     if (window.innerWidth < 768) setIsMonthView(false);
     window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+
+    // Auth session check
+    const supabase = supabaseRef.current;
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      if (u) {
+        setUser(u);
+        loadHabitsFromDB(u.id, now.getMonth(), now.getFullYear());
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        loadHabitsFromDB(session.user.id, month, year);
+      } else {
+        setUser(null);
+        setHabits([]);
+      }
+    });
+
+    return () => {
+      window.removeEventListener("resize", checkMobile);
+      authListener.subscription.unsubscribe();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -134,14 +412,36 @@ export default function App() {
     if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1);
   }
 
-  function addHabit() {
+  async function addHabit() {
     if (!newHabit.trim()) return;
-    setHabits(prev => [...prev, { name: newHabit.trim(), category: newCategory.trim() || "Uncategorized", days: Array(31).fill(STATUS.NONE), id: Math.random() }]);
+    const name = newHabit.trim();
+    const category = newCategory.trim() || "Uncategorized";
+
+    if (user) {
+      const { data, error } = await supabaseRef.current.from('habits').insert({
+        user_id: user.id,
+        name,
+        category,
+        sort_order: habits.length,
+      }).select().single();
+
+      if (!error && data) {
+        setHabits(prev => [...prev, { id: data.id, name: data.name, category: data.category, sort_order: data.sort_order, days: Array(31).fill(STATUS.NONE) }]);
+      }
+    } else {
+      // Anonymous fallback (local only)
+      setHabits(prev => [...prev, { name, category, days: Array(31).fill(STATUS.NONE), id: crypto.randomUUID(), sort_order: prev.length }]);
+    }
     setNewHabit("");
     setNewCategory("");
   }
 
-  function removeHabit(id: number) { setHabits(prev => prev.filter(h => h.id !== id)); }
+  async function removeHabit(id: string) {
+    setHabits(prev => prev.filter(h => h.id !== id));
+    if (user) {
+      await supabaseRef.current.from('habits').delete().eq('id', id);
+    }
+  }
 
   const toggleCategory = (cat: string) => {
     setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -153,13 +453,21 @@ export default function App() {
     setEditCategoryName(cat);
   };
 
-  const saveCategoryEdit = (oldCat: string) => {
-    if (editCategoryName.trim() && editCategoryName.trim() !== oldCat) {
+  const saveCategoryEdit = async (oldCat: string) => {
+    const newCat = editCategoryName.trim();
+    if (newCat && newCat !== oldCat) {
       setHabits(prev => prev.map(h => 
         (h.category || "Uncategorized") === oldCat 
-          ? { ...h, category: editCategoryName.trim() } 
+          ? { ...h, category: newCat } 
           : h
       ));
+      // Persist category rename
+      if (user) {
+        const affectedIds = habits.filter(h => (h.category || "Uncategorized") === oldCat).map(h => h.id);
+        if (affectedIds.length > 0) {
+          await supabaseRef.current.from('habits').update({ category: newCat }).in('id', affectedIds);
+        }
+      }
     }
     setEditingCategory(null);
   };
@@ -169,13 +477,17 @@ export default function App() {
     setCategoryToDelete(cat);
   };
 
-  const executeDeleteCategory = () => {
+  const executeDeleteCategory = async () => {
     if (!categoryToDelete) return;
+    const affectedIds = habits.filter(h => (h.category || "Uncategorized") === categoryToDelete).map(h => h.id);
     setHabits(prev => prev.map(h => 
       (h.category || "Uncategorized") === categoryToDelete 
         ? { ...h, category: "Uncategorized" } 
         : h
     ));
+    if (user && affectedIds.length > 0) {
+      await supabaseRef.current.from('habits').update({ category: 'Uncategorized' }).in('id', affectedIds);
+    }
     setCategoryToDelete(null);
   };
 
@@ -266,8 +578,20 @@ export default function App() {
     { name: "No social media before noon", category: "Focus" },
   ];
 
-  const addSuggestedHabit = (name: string, category: string) => {
-    setHabits(prev => [...prev, { name, category, days: Array(31).fill(STATUS.NONE), id: Math.random() }]);
+  const addSuggestedHabit = async (name: string, category: string) => {
+    if (user) {
+      const { data, error } = await supabaseRef.current.from('habits').insert({
+        user_id: user.id,
+        name,
+        category,
+        sort_order: habits.length,
+      }).select().single();
+      if (!error && data) {
+        setHabits(prev => [...prev, { id: data.id, name: data.name, category: data.category, sort_order: data.sort_order, days: Array(31).fill(STATUS.NONE) }]);
+      }
+    } else {
+      setHabits(prev => [...prev, { name, category, days: Array(31).fill(STATUS.NONE), id: crypto.randomUUID(), sort_order: prev.length }]);
+    }
   };
 
   if (!mounted) return null;
@@ -858,6 +1182,11 @@ export default function App() {
                                                   <motion.div
                                                     className={[!isFuture ? "pill" : ""].filter(Boolean).join(" ")}
                                                     onClick={() => !isFuture && cycleStatus(habit.id, idx, false, true)}
+                                                    onTouchEnd={(e) => {
+                                                      if (isFuture) return;
+                                                      e.preventDefault(); // prevent ghost click
+                                                      cycleStatus(habit.id, idx, false, true);
+                                                    }}
                                                     onMouseEnter={() => { if (!isFuture) hoveredCellRef.current = { hid: habit.id, idx }; }}
                                                     onMouseLeave={() => { hoveredCellRef.current = null; }}
                                                     initial={false}
@@ -900,72 +1229,13 @@ export default function App() {
                                         {/* Heatmap Calendar View */}
                                         <AnimatePresence>
                                           {expandedCalendar === habit.id && (
-                                            <motion.div
-                                              initial={{ height: 0, opacity: 0 }}
-                                              animate={{ height: "auto", opacity: 1 }}
-                                              exit={{ height: 0, opacity: 0 }}
-                                              className="calendar-heatmap"
-                                              style={{ overflow: "hidden", marginTop: 24, paddingTop: 20, borderTop: "1px solid #1c1c1c", width: "100%" }}
-                                            >
-                                              {(() => {
-                                                const heatmapMonths: {weekIdx: number, name: string}[] = [];
-                                                let lastMonth = -1;
-                                                for (let w = 0; w < 26; w++) {
-                                                  const d = new Date(now.getTime() - (25 - w) * 7 * 24 * 60 * 60 * 1000);
-                                                  if (d.getMonth() !== lastMonth) {
-                                                    if (w > 0 || d.getDate() <= 14) {
-                                                      heatmapMonths.push({ weekIdx: w, name: MONTHS[d.getMonth()].substring(0, 3) });
-                                                    }
-                                                    lastMonth = d.getMonth();
-                                                  }
-                                                }
-                                                return (
-                                                  <div style={{ overflowX: "auto", paddingBottom: 8 }}>
-                                                    <div style={{ position: "relative", height: 16, marginBottom: 4, minWidth: 26 * 16 }}>
-                                                      {heatmapMonths.map((m, i) => (
-                                                        <span key={i} style={{
-                                                          position: "absolute",
-                                                          left: m.weekIdx * 16,
-                                                          fontSize: 10,
-                                                          color: "var(--text-muted)",
-                                                          fontFamily: "var(--font-mono), monospace",
-                                                          textTransform: "uppercase",
-                                                          letterSpacing: "0.05em"
-                                                        }}>
-                                                          {m.name}
-                                                        </span>
-                                                      ))}
-                                                    </div>
-                                                    <div style={{ display: "flex", gap: 4, minWidth: 26 * 16 }}>
-                                                      {Array.from({ length: 26 }).map((_, w) => (
-                                                        <div key={w} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                                          {Array.from({ length: 7 }).map((_, d) => {
-                                                            const hash = Math.sin(habit.id * 100 + w * 10 + d);
-                                                            const status = hash > 0.3 ? STATUS.DONE : hash > 0 ? STATUS.PARTIAL : hash > -0.2 ? STATUS.MISSED : STATUS.NONE;
-                                                            const meta = S[status as keyof typeof S];
-                                                            return (
-                                                              <div
-                                                                key={d}
-                                                                className={status === STATUS.NONE ? "calendar-heatmap-cell-none" : ""}
-                                                                style={{
-                                                                  width: 12, height: 12, borderRadius: 3,
-                                                                  background: status === STATUS.NONE ? "var(--heatmap-none)" : meta.bg,
-                                                                  opacity: w === 25 && d > new Date().getDay() ? 0.2 : 1
-                                                                }}
-                                                                title={`${status === STATUS.NONE ? "No data" : meta.label}`}
-                                                              />
-                                                            );
-                                                          })}
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })()}
-                                              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, fontFamily: "var(--font-mono), monospace", textAlign: "right" }}>
-                                                Last 6 Months Activity
-                                              </div>
-                                            </motion.div>
+                                            <HeatmapCalendar
+                                              habitId={habit.id}
+                                              user={user}
+                                              supabase={supabaseRef.current}
+                                              heatmapLogs={heatmapLogs}
+                                              setHeatmapLogs={setHeatmapLogs}
+                                            />
                                           )}
                                         </AnimatePresence>
 

@@ -27,18 +27,18 @@ export default function TodoList() {
   };
 
   return (
-    <div className="page-enter" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-outfit), sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", background: "#121212", border: "1px solid #222", borderRadius: 999, padding: "6px 6px 6px 20px", marginBottom: 32 }}>
+    <div className="page-enter" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
+      <div style={{ display: "flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 999, padding: "6px 6px 6px 20px", marginBottom: 32 }}>
         <input
           value={newTodo}
           onChange={e => setNewTodo(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") addTodo(); }}
           placeholder="What needs to be done?"
-          style={{ background: "transparent", border: "none", color: "#c8c8c8", fontSize: 14, outline: "none", flex: 1 }}
+          style={{ background: "transparent", border: "none", color: "var(--text-main)", fontSize: 14, outline: "none", flex: 1 }}
         />
         <button
           onClick={addTodo}
-          style={{ width: 38, height: 38, borderRadius: "50%", background: "#c9a227", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#0a0a0a", transition: "transform 0.15s" }}
+          style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--accent)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--bg-base)", transition: "transform 0.15s" }}
           onMouseEnter={e => e.currentTarget.style.transform = "scale(1.07)"}
           onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
         >
@@ -56,18 +56,18 @@ export default function TodoList() {
               exit={{ opacity: 0, scale: 0.95 }}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "16px 20px", background: "#121212", border: "1px solid #1c1c1c", borderRadius: 12,
+                padding: "16px 20px", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12,
                 transition: "border-color 0.2s"
               }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = "#333"}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "#1c1c1c"}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "var(--border-focus)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border-main)"}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }} onClick={() => toggleTodo(todo.id)}>
-                <div style={{ color: todo.completed ? "#4ade80" : "#555", transition: "color 0.2s" }}>
+                <div style={{ color: todo.completed ? "#4ade80" : "var(--text-muted)", transition: "color 0.2s" }}>
                   {todo.completed ? <Check size={20} /> : <Circle size={20} />}
                 </div>
                 <span style={{
-                  fontSize: 15, color: todo.completed ? "#666" : "#d0d0d0",
+                  fontSize: 15, color: todo.completed ? "var(--text-muted)" : "var(--text-main)",
                   textDecoration: todo.completed ? "line-through" : "none",
                   transition: "color 0.2s"
                 }}>
@@ -76,9 +76,9 @@ export default function TodoList() {
               </div>
               <button
                 onClick={() => deleteTodo(todo.id)}
-                style={{ background: "none", border: "none", color: "#555", cursor: "pointer", padding: 4 }}
+                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 4 }}
                 onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
-                onMouseLeave={e => e.currentTarget.style.color = "#555"}
+                onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted)"}
               >
                 <Trash2 size={16} />
               </button>
@@ -87,7 +87,7 @@ export default function TodoList() {
         </AnimatePresence>
         
         {todos.length === 0 && (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "#555", fontSize: 14 }}>
+          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 14 }}>
             No tasks yet. Add one above!
           </div>
         )}

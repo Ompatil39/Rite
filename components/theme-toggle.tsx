@@ -1,12 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Moon, Sun } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 export default function ThemeToggle() {
   const [isDark, setIsDark] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Check local storage or system preference on mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
     const stored = localStorage.getItem("theme");
     if (stored === "light") {
       setIsDark(false);
@@ -31,9 +34,14 @@ export default function ThemeToggle() {
     }
   };
 
+  if (!mounted) return null;
+
   return (
-    <button
+    <motion.button
+      className="theme-toggle-btn"
       onClick={toggleTheme}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
       style={{
         position: "fixed",
         bottom: 32,
@@ -41,20 +49,27 @@ export default function ThemeToggle() {
         width: 48,
         height: 48,
         borderRadius: "50%",
-        background: "var(--bg-surface, #121212)",
-        border: "1px solid var(--border-main, #222)",
-        color: "var(--text-main, #d0d0d0)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         cursor: "pointer",
         zIndex: 9999,
-        boxShadow: "0 4px 12px var(--shadow-alpha, rgba(0,0,0,0.4))",
-        transition: "all 0.3s ease"
+        overflow: "hidden"
       }}
       title="Toggle Theme"
     >
-      {isDark ? <Sun size={20} /> : <Moon size={20} />}
-    </button>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={isDark ? "dark" : "light"}
+          initial={{ y: -30, opacity: 0, rotate: -90 }}
+          animate={{ y: 0, opacity: 1, rotate: 0 }}
+          exit={{ y: 30, opacity: 0, rotate: 90 }}
+          transition={{ duration: 0.3, ease: "backOut" }}
+          style={{ position: "absolute" }}
+        >
+          {isDark ? <Sun size={20} /> : <Moon size={20} />}
+        </motion.div>
+      </AnimatePresence>
+    </motion.button>
   );
 }

@@ -25,29 +25,51 @@ export default function ProfileDashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
 
-      // Fetch logs for the last 30 days to calculate streak and completion
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+      // Fetch all logs to calculate true longest streak and overall completion
       const { data: logs } = await supabase
         .from('habit_logs')
         .select('*, habits!inner(user_id)')
-        .eq('habits.user_id', userId)
-        .gte('date', thirtyDaysAgo.toISOString().split('T')[0]);
+        .eq('habits.user_id', userId);
 
       if (logs) {
         const completedLogs = logs.filter((l: any) => l.status === 1).length;
         const totalLogs = logs.length;
         const completionRate = totalLogs > 0 ? Math.round((completedLogs / totalLogs) * 100) : 0;
         
-        // Simple streak calculation (mocking logic for now based on logs)
-        // In a real app, you'd iterate through dates
+        // Real longest streak calculation
+        const uniqueCompletedDates = [...new Set(
+          logs.filter((l: any) => l.status === 1).map((l: any) => l.date)
+        )].sort();
+        
+        let maxStreak = 0;
+        if (uniqueCompletedDates.length > 0) {
+          let currentStreak = 1;
+          maxStreak = 1;
+          for (let i = 1; i < uniqueCompletedDates.length; i++) {
+            const prevDate = new Date(uniqueCompletedDates[i-1]);
+            const currDate = new Date(uniqueCompletedDates[i]);
+            
+            // Handle timezone independent date difference to calculate consecutive days
+            const diffTime = Math.abs(currDate.getTime() - prevDate.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 1) {
+              currentStreak++;
+              maxStreak = Math.max(maxStreak, currentStreak);
+            } else if (diffDays > 1) {
+              currentStreak = 1;
+            }
+          }
+        }
+
         setStats({
           totalHabits: habitsCount || 0,
-          longestStreak: completedLogs > 0 ? Math.min(completedLogs, 30) : 0, // Simplified streak
+          longestStreak: maxStreak,
           completionRate,
           loading: false
         });
+      } else {
+        setStats({ totalHabits: habitsCount || 0, longestStreak: 0, completionRate: 0, loading: false });
       }
     } catch (err) {
       console.error("Error fetching stats:", err);
@@ -172,7 +194,7 @@ export default function ProfileDashboard() {
             </div>
             <div style={{ flex: 1 }}>
               <h2 style={{ fontSize: 24, fontWeight: 600, color: "var(--text-main)", marginBottom: 4 }}>Welcome back!</h2>
-              <p style={{ fontSize: 14, color: "var(--text-muted)" }}>{user?.email || "user@example.com"}</p>
+              <p style={{ fontSize: 14, color: "var(--text-muted)" }}>{user?.user_metadata?.full_name || user?.email}</p>
             </div>
             <button
               onClick={handleLogout}

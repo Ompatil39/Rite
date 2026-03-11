@@ -5,11 +5,7 @@ import { Plus, Trash2, Check, Circle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function TodoList() {
-  const [todos, setTodos] = useState([
-    { id: 1, text: "Review weekly goals", completed: false },
-    { id: 2, text: "Buy groceries", completed: true },
-    { id: 3, text: "Call mom", completed: false },
-  ]);
+  const [todos, setTodos] = useState<{ id: number; text: string; completed: boolean }[]>([]);
   const [newTodo, setNewTodo] = useState("");
 
   const addTodo = () => {

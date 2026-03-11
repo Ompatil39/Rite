@@ -46,8 +46,8 @@ export default function ProfileDashboard() {
           let currentStreak = 1;
           maxStreak = 1;
           for (let i = 1; i < uniqueCompletedDates.length; i++) {
-            const prevDate = new Date(uniqueCompletedDates[i-1]);
-            const currDate = new Date(uniqueCompletedDates[i]);
+            const prevDate = new Date(uniqueCompletedDates[i-1] as string | number);
+            const currDate = new Date(uniqueCompletedDates[i] as string | number);
             
             // Handle timezone independent date difference to calculate consecutive days
             const diffTime = Math.abs(currDate.getTime() - prevDate.getTime());

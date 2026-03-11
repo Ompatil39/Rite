@@ -6,13 +6,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DEFAULT_HABITS = [
-  { name: "Morning Meditation", category: "Mindfulness" },
-  { name: "Read 20 Pages", category: "Learning" },
-  { name: "Workout", category: "Health" },
-  { name: "No Sugar", category: "Health" },
-  { name: "Journal", category: "Mindfulness" }
-];
+
 const STATUS = { NONE: 0, DONE: 1, PARTIAL: 2, MISSED: 3 };
 
 const S = {
@@ -50,9 +44,7 @@ export default function App() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
-  const [habits, setHabits] = useState(() =>
-    DEFAULT_HABITS.map(h => ({ name: h.name, category: h.category, days: Array(31).fill(STATUS.NONE), id: Math.random() }))
-  );
+  const [habits, setHabits] = useState<Array<{name: string, category: string, days: number[], id: number}>>([]);
   const [newHabit, setNewHabit] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [inputFocused, setInputFocused] = useState(false);
@@ -886,7 +878,7 @@ export default function App() {
             />
             <input
               className="add-input add-input-cat"
-              style={{ width: 140, flex: 'none', borderLeft: '1px solid var(--border-main)', paddingLeft: 16, marginLeft: 8 }}
+              style={{ width: 170, flex: 'none', borderLeft: '1px solid var(--border-main)', paddingLeft: 16, marginLeft: 8 }}
               placeholder="Category (optional)"
               value={newCategory}
               onChange={e => setNewCategory(e.target.value)}

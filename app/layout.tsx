@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 export default function RootLayout({children}: {children: React.ReactNode}) {
   return (
     <html lang="en" className={`dark ${cormorant.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}>
-      <body suppressHydrationWarning style={{ margin: 0, padding: 0, fontFamily: "var(--font-body), sans-serif", backgroundColor: "var(--bg-base, #0a0a0a)", color: "var(--text-main, #d0d0d0)", transition: "background-color 0.3s, color 0.3s" }}>
+      <body suppressHydrationWarning style={{ margin: 0, padding: 0, fontFamily: "var(--font-body), sans-serif", backgroundColor: "var(--bg-base, #111113)", color: "var(--text-main, #d0d0d0)", transition: "background-color 0.3s, color 0.3s" }}>
         <FloatingNavLayout>
           {children}
         </FloatingNavLayout>

@@ -47,23 +47,23 @@
 }
 
 :root.dark {
-  --bg-base: #0a0a0a;
-  --bg-surface: #121212;
-  --bg-surface-hover: #1a1a1a;
+  --bg-base: #111113;
+  --bg-surface: #161618;
+  --bg-surface-hover: #1e1e20;
   --text-main: #d0d0d0;
   --text-muted: #888888;
-  --border-main: #1c1c1c;
-  --border-focus: #282828;
+  --border-main: #242426;
+  --border-focus: #323234;
   --accent: #c9a227;
   --shadow-alpha: rgba(0,0,0,0.4);
-  --nav-bg: rgba(12, 12, 12, 0.65);
-  --pill-none: #1d1d1d;
-  --pill-none-border: #272727;
+  --nav-bg: rgba(17, 17, 19, 0.65);
+  --pill-none: #1e1e20;
+  --pill-none-border: #2a2a2c;
   --status-done: #4ade80;
   --status-done-glow: rgba(74,222,128,0.3);
   --status-partial: #f59e0b;
   --status-partial-glow: rgba(245,158,11,0.3);
   --status-missed: #ef4444;
   --status-missed-glow: rgba(239,68,68,0.3);
-  --heatmap-none: #1a1a1a;
+  --heatmap-none: #1a1a1c;
 }

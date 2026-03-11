@@ -3,10 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, CheckSquare, User } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 export default function FloatingNavLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (window.innerWidth < 768) {
+        if (currentScrollY > lastScrollY && currentScrollY > 50) {
+          setIsVisible(false); // Scroll down
+        } else {
+          setIsVisible(true); // Scroll up
+        }
+      } else {
+        setIsVisible(true);
+      }
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [lastScrollY]);
 
   const links = useMemo(() => [
     { href: "/", label: "Habits", icon: LayoutDashboard },
@@ -18,13 +39,22 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <style>{`
         @media (max-width: 768px) {
-          .top-left-header { top: 16px !important; left: 16px !important; }
+          .top-left-header { top: 16px !important; left: 16px !important; position: absolute !important; }
           .top-left-header h1 { font-size: 28px !important; }
           .floating-nav {
             top: auto !important;
             bottom: 24px !important;
             width: calc(100% - 32px) !important;
             padding: 8px !important;
+          }
+          .floating-nav.nav-hidden {
+            transform: translate(-50%, calc(100% + 32px)) !important;
+            opacity: 0;
+            pointer-events: none;
+          }
+          .floating-nav.nav-visible {
+            transform: translate(-50%, 0) !important;
+            opacity: 1;
           }
           .floating-nav nav { width: 100%; justify-content: space-between; }
           .floating-nav a { padding: 8px 12px !important; flex-direction: column; gap: 4px !important; font-size: 11px !important; flex: 1; justify-content: center; }
@@ -46,15 +76,16 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
 
       {/* Center Floating Nav */}
       <header
-        className="floating-nav"
+        className={`floating-nav ${isVisible ? "nav-visible" : "nav-hidden"}`}
         style={{
-          position: "absolute",
+          position: "fixed",
           top: 32,
           left: "50%",
           transform: "translateX(-50%)",
           display: "flex",
           alignItems: "center",
           padding: "6px",
+          transition: "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
           background: "var(--nav-bg)",
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",

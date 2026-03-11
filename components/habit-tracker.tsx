@@ -64,7 +64,8 @@ export default function App() {
   const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
   const [expandedCalendar, setExpandedCalendar] = useState<number | null>(null);
-  const [isMonthView, setIsMonthView] = useState(false);
+  const [isMonthView, setIsMonthView] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const [touchY, setTouchY] = useState<number | null>(null);
   const hoveredCellRef = useRef<{hid: number, idx: number} | null>(null);
   const cycleRef = useRef<any>(null);
@@ -110,8 +111,16 @@ export default function App() {
   useEffect(() => { cycleRef.current = cycleStatus; });
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setIsMonthView(true);
+    };
+    checkMobile();
+    if (window.innerWidth < 768) setIsMonthView(false);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   useEffect(() => {
@@ -432,28 +441,66 @@ export default function App() {
       <div className="page-container page-enter" style={{ maxWidth: 1340, margin: "0 auto", padding: "0px 36px 88px" }}>
 
         {/* ── HEADER (Month Navigator) ── */}
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-start", marginBottom: 32, gap: 12 }}>
+        <div style={{ 
+          display: "flex", 
+          justifyContent: isMobile ? "center" : "flex-end", 
+          alignItems: "center", 
+          marginBottom: 32, 
+          gap: 12,
+          flexWrap: "wrap" 
+        }}>
           {/* Month Navigator */}
-          <div className="month-nav-container" style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12, padding: "10px 16px" }}>
-            <button className="nav-btn" onClick={prevMonth}><ChevronLeft size={15} /></button>
-            <span className="month-nav-text" style={{ fontFamily: "var(--font-mono), monospace", fontSize: 12, color: "var(--text-muted)", letterSpacing: "0.12em", minWidth: 116, textAlign: "center" }}>
+          <div className="month-nav-container" style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: 10, 
+            background: "var(--bg-surface)", 
+            border: "1px solid var(--border-main)", 
+            borderRadius: 12, 
+            padding: "8px 12px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+          }}>
+            <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}><ChevronLeft size={14} /></button>
+            <span className="month-nav-text" style={{ 
+              fontFamily: "var(--font-mono), monospace", 
+              fontSize: 11, 
+              color: "var(--text-muted)", 
+              letterSpacing: "0.1em", 
+              minWidth: 100, 
+              textAlign: "center",
+              fontWeight: 600
+            }}>
               {MONTHS[month].toUpperCase()} {year}
             </span>
-            <button className="nav-btn" onClick={nextMonth}><ChevronRight size={15} /></button>
+            <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}><ChevronRight size={14} /></button>
           </div>
-          <button
-            onClick={() => setIsMonthView(!isMonthView)}
-            style={{
-              background: "var(--bg-surface)", border: "1px solid var(--border-main)",
-              color: "var(--text-main)", padding: "10px 16px", borderRadius: 12,
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
-              fontFamily: "var(--font-body), sans-serif",
-              display: "flex", alignItems: "center", gap: 4,
-              transition: "all 0.2s"
-            }}
-          >
-            {isMonthView ? "Week ↑" : "Month ↓"}
-          </button>
+
+          {/* Toggle Button - Only for Mobile */}
+          {isMobile && (
+            <button
+              onClick={() => setIsMonthView(!isMonthView)}
+              style={{
+                background: "var(--bg-surface)", 
+                border: "1px solid var(--border-main)",
+                color: "var(--accent)", 
+                padding: "8px 14px", 
+                borderRadius: 12,
+                fontSize: 11, 
+                fontWeight: 700, 
+                cursor: "pointer",
+                fontFamily: "var(--font-mono), monospace",
+                display: "flex", 
+                alignItems: "center", 
+                gap: 6,
+                transition: "all 0.2s",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em"
+              }}
+            >
+              {isMonthView ? <><ChevronRight size={14} /> Weekly</> : <><ChevronDown size={14} /> Monthly</>}
+            </button>
+          )}
         </div>
 
         {/* ── LEGEND ── */}
@@ -472,12 +519,12 @@ export default function App() {
         <div 
           className="scroll-container" 
           style={{ overflowX: "auto", paddingBottom: 24, paddingTop: 60, marginTop: -60, marginLeft: -36, marginRight: -36, paddingLeft: 36, paddingRight: 36 }}
-          onTouchStart={(e) => setTouchY(e.touches[0].clientY)}
+          onTouchStart={(e) => isMobile && setTouchY(e.touches[0].clientY)}
           onTouchEnd={(e) => {
-            if (touchY === null) return;
+            if (!isMobile || touchY === null) return;
             const diff = e.changedTouches[0].clientY - touchY;
-            if (diff > 50) setIsMonthView(true);
-            else if (diff < -50) setIsMonthView(false);
+            if (diff > 60) setIsMonthView(true);
+            else if (diff < -60) setIsMonthView(false);
             setTouchY(null);
           }}
         >

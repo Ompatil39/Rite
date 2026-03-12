@@ -13,7 +13,7 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      if (window.innerWidth < 768) {
+      if (window.innerWidth <= 768) {
         if (currentScrollY > lastScrollY && currentScrollY > 50) {
           setIsVisible(false); // Scroll down
         } else {
@@ -36,7 +36,7 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
   ], []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+    <div className="min-h-screen-stable" style={{ display: "flex", flexDirection: "column" }}>
       <style>{`
         @media (max-width: 768px) {
           .top-left-header { top: 16px !important; left: 16px !important; position: absolute !important; }
@@ -144,6 +144,8 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
         className="main-content"
         style={{
           flex: 1,
+          boxSizing: "border-box",
+          minHeight: 0,
           paddingTop: 120, // Space for the floating nav and headers
           overflowX: "hidden",
         }}
@@ -153,3 +155,4 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
     </div>
   );
 }
+

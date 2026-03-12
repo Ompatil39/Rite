@@ -82,3 +82,9 @@
 .page-enter {
   animation: pageEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+.min-h-screen-stable {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+

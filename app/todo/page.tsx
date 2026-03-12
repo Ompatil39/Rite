@@ -19,8 +19,16 @@ export default function TodoList() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const supabaseRef = useRef(createClient());
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // ── Load todos from Supabase ──
+  const syncComposerHeight = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+
+    element.style.height = "0px";
+    element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+  };
+
+  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Load todos from Supabase ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   const loadTodos = useCallback(async (userId: string) => {
     const { data } = await supabaseRef.current
       .from("todos")
@@ -41,7 +49,7 @@ export default function TodoList() {
     setLoading(false);
   }, []);
 
-  // ── Auth + initial load ──
+  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Auth + initial load ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   useEffect(() => {
     const supabase = supabaseRef.current;
 
@@ -70,7 +78,7 @@ export default function TodoList() {
     return () => listener.subscription.unsubscribe();
   }, [loadTodos]);
 
-  // ── Add todo ──
+  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Add todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   const addTodo = async () => {
     if (!newTodo.trim()) return;
     const text = newTodo.trim();
@@ -103,7 +111,7 @@ export default function TodoList() {
     setNewTodo("");
   };
 
-  // ── Toggle todo ──
+  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Toggle todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   const toggleTodo = async (id: string) => {
     setTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
@@ -119,7 +127,7 @@ export default function TodoList() {
     }
   };
 
-  // ── Delete todo ──
+  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Delete todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
   const deleteTodo = async (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
     if (user) {
@@ -127,15 +135,109 @@ export default function TodoList() {
     }
   };
 
+  useEffect(() => {
+    syncComposerHeight(composerRef.current);
+  }, [newTodo]);
+
   return (
-    <div className="page-enter" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 999, padding: "6px 6px 6px 20px", marginBottom: 32 }}>
-        <input
+    <div className="page-enter todo-page" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
+      <style>{`
+        .todo-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 16px 20px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-main);
+          border-radius: 12px;
+          transition: border-color 0.2s;
+        }
+
+        .todo-row-main {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          flex: 1;
+          min-width: 0;
+          width: 100%;
+          padding: 0;
+          background: none;
+          border: none;
+          color: inherit;
+          cursor: pointer;
+          font: inherit;
+          text-align: left;
+        }
+
+        .todo-checkbox {
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .todo-text {
+          display: block;
+          flex: 1;
+          min-width: 0;
+          line-height: 1.35;
+          white-space: normal;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .todo-delete {
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          align-self: flex-start;
+          flex-shrink: 0;
+          padding: 4px;
+          margin-top: 2px;
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+        }
+
+        @media (max-width: 768px) {
+          .todo-page { padding: 0px 16px 88px !important; }
+          .todo-row { padding: 14px 14px !important; }
+        }
+      `}</style>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 24, padding: "6px 6px 6px 20px", marginBottom: 32 }}>
+        <textarea
+          ref={composerRef}
           value={newTodo}
-          onChange={e => setNewTodo(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") addTodo(); }}
+          rows={1}
+          onChange={e => {
+            setNewTodo(e.target.value);
+            syncComposerHeight(e.currentTarget);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              addTodo();
+            }
+          }}
           placeholder="What needs to be done?"
-          style={{ background: "transparent", border: "none", color: "var(--text-main)", fontSize: 14, outline: "none", flex: 1 }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--text-main)",
+            fontSize: 14,
+            outline: "none",
+            flex: 1,
+            minWidth: 0,
+            resize: "none",
+            overflow: "hidden",
+            minHeight: 38,
+            maxHeight: 120,
+            lineHeight: 1.4,
+            padding: "10px 0 8px",
+            fontFamily: "var(--font-body), sans-serif",
+          }}
         />
         <button
           onClick={addTodo}
@@ -165,32 +267,43 @@ export default function TodoList() {
             {todos.map(todo => (
               <motion.div
                 key={todo.id}
+                className="todo-row"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "16px 20px", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12,
-                  transition: "border-color 0.2s"
+                  willChange: "transform, opacity",
                 }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = "var(--border-focus)"}
                 onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border-main)"}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }} onClick={() => toggleTodo(todo.id)}>
-                  <div style={{ color: todo.completed ? "#4ade80" : "var(--text-muted)", transition: "color 0.2s" }}>
+                <button
+                  type="button"
+                  className="todo-row-main"
+                  onClick={() => toggleTodo(todo.id)}
+                >
+                  <div
+                    className="todo-checkbox"
+                    style={{ color: todo.completed ? "#4ade80" : "var(--text-muted)", transition: "color 0.2s" }}
+                  >
                     {todo.completed ? <Check size={20} /> : <Circle size={20} />}
                   </div>
-                  <span style={{
-                    fontSize: 15, color: todo.completed ? "var(--text-muted)" : "var(--text-main)",
-                    textDecoration: todo.completed ? "line-through" : "none",
-                    transition: "color 0.2s"
-                  }}>
+                  <div
+                    className="todo-text"
+                    style={{
+                      fontSize: 15,
+                      color: todo.completed ? "var(--text-muted)" : "var(--text-main)",
+                      textDecoration: todo.completed ? "line-through" : "none",
+                      transition: "color 0.2s",
+                    }}
+                  >
                     {todo.text}
-                  </span>
-                </div>
+                  </div>
+                </button>
                 <button
+                  type="button"
+                  className="todo-delete"
                   onClick={() => deleteTodo(todo.id)}
-                  style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 4 }}
                   onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
                   onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted)"}
                 >
@@ -207,8 +320,8 @@ export default function TodoList() {
               transition={{ delay: 0.2, duration: 0.5 }}
               style={{ textAlign: "center", padding: "80px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
             >
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-surface)", border: "1px dashed var(--border-focus)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
-                <Check size={28} opacity={0.5} />
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-surface)", border: "1px dashed var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)" }}>
+                <Check size={28} color="var(--accent)" />
               </div>
               <div>
                 <p style={{ color: "var(--text-main)", fontWeight: 600, marginBottom: 4 }}>You&apos;re all caught up</p>
@@ -221,3 +334,4 @@ export default function TodoList() {
     </div>
   );
 }
+

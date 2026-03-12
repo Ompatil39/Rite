@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { LogIn, LogOut, User, Activity, Flame, CheckCircle2 } from "lucide-react";
+import { LogOut, User, Activity, Flame, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { createClient } from "@/utils/supabase/client";
@@ -127,89 +127,146 @@ export default function ProfileDashboard() {
   };
 
   return (
-    <div className="page-enter" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
+    <div className="page-enter profile-page" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
+      <style>{`
+        .auth-card {
+          background: linear-gradient(145deg, var(--bg-surface), var(--bg-surface-hover));
+          border: 1px solid rgba(201, 162, 39, 0.12);
+          box-shadow:
+            0 28px 64px rgba(0, 0, 0, 0.24),
+            inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        }
+        .auth-icon {
+          color: rgba(201, 162, 39, 0.82);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .auth-title {
+          font-size: 28px;
+          font-weight: 600;
+          color: var(--text-main);
+          margin-bottom: 10px;
+          letter-spacing: -0.03em;
+        }
+        .auth-subtitle {
+          font-size: 15px;
+          color: var(--text-muted);
+          max-width: 420px;
+          margin: 0 auto;
+          line-height: 1.45;
+        }
+        .auth-button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          background: var(--bg-surface-hover);
+          color: var(--text-main);
+          border: 1px solid rgba(201, 162, 39, 0.18);
+          padding: 14px 28px;
+          border-radius: 999px;
+          font-size: 15px;
+          font-weight: 600;
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+        }
+        @media (max-width: 520px) {
+          .profile-page {
+            padding: 0px 16px 88px !important;
+          }
+          .auth-card {
+            padding: 52px 24px !important;
+            gap: 22px !important;
+          }
+          .auth-title {
+            font-size: 22px !important;
+          }
+          .auth-subtitle {
+            font-size: 14px !important;
+          }
+          .auth-button {
+            width: 100% !important;
+          }
+          .welcome-card {
+            padding: 18px !important;
+            gap: 14px !important;
+            align-items: stretch !important;
+            flex-wrap: wrap !important;
+          }
+          .welcome-avatar {
+            width: 56px !important;
+            height: 56px !important;
+          }
+          .welcome-title {
+            font-size: 20px !important;
+          }
+          .welcome-subtitle {
+            font-size: 13px !important;
+          }
+          .welcome-cta {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 10px 14px !important;
+          }
+        }
+      `}</style>
       {!isLoggedIn ? (
         <motion.div 
+          className="auth-card"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            background: "linear-gradient(145deg, var(--bg-surface), var(--bg-surface-hover))",
-            border: "1px solid var(--border-main)",
             borderRadius: 24,
-            padding: "56px 40px",
+            padding: "72px 44px",
             textAlign: "center",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 28,
-            boxShadow: "0 24px 48px var(--shadow-alpha)",
+            gap: 32,
             position: "relative",
             overflow: "hidden"
           }}
         >
-          {/* Subtle background glow */}
-          <div style={{
-            position: "absolute",
-            top: -100,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 300,
-            height: 300,
-            background: "var(--accent)",
-            opacity: 0.08,
-            filter: "blur(60px)",
-            borderRadius: "50%",
-            pointerEvents: "none"
-          }} />
+
 
           <motion.div 
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", damping: 20, stiffness: 200, delay: 0.2 }}
-            style={{ 
-              width: 80, height: 80, borderRadius: "50%", 
-              background: "var(--bg-base)", border: "1px solid var(--border-main)",
-              display: "flex", alignItems: "center", justifyContent: "center", 
-              color: "var(--accent)",
-              boxShadow: "0 8px 16px var(--shadow-alpha)"
-            }}
+            initial={{ scale: 0.92, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.35, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="auth-icon"
+            style={{ position: "relative", zIndex: 1 }}
           >
-            <User size={32} />
+            <User size={28} strokeWidth={1.8} />
           </motion.div>
 
           <div style={{ position: "relative", zIndex: 1 }}>
-            <h2 style={{ fontSize: 28, fontWeight: 600, color: "var(--text-main)", marginBottom: 12, letterSpacing: "-0.02em" }}>Sign in to sync your data</h2>
-            <p style={{ fontSize: 15, color: "var(--text-muted)", maxWidth: 400, margin: "0 auto", lineHeight: 1.5 }}>
-              Connect your Google account to securely save your habits and to-do lists across devices. Never lose your streaks again.
+            <h2 className="auth-title">Your progress, everywhere</h2>
+            <p className="auth-subtitle">
+              Secure Google sync for your habits and to-dos.
             </p>
           </div>
 
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            className="auth-button"
+            whileHover={{ scale: 1.01, y: -1 }}
+            whileTap={{ scale: 0.99 }}
             onClick={handleLogin}
-            style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: "var(--text-main)", color: "var(--bg-base)", border: "none",
-              padding: "14px 28px", borderRadius: 999, fontSize: 15, fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
-              position: "relative", zIndex: 1,
-              marginTop: 8
-            }}
+            style={{ cursor: "pointer", position: "relative", zIndex: 1, marginTop: 8 }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M22.56 12.25C22.56 11.47 22.49 10.73 22.36 10H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.75h3.57c2.09-1.93 3.28-4.78 3.28-8.32z" fill="currentColor"/>
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.75c-.99.66-2.26 1.05-3.71 1.05-2.86 0-5.28-1.93-6.14-4.52H2.18v2.84C4.01 20.61 7.72 23 12 23z" fill="currentColor"/>
-              <path d="M5.86 14.12c-.22-.66-.35-1.36-.35-2.12s.13-1.46.35-2.12V7.04H2.18C1.43 8.53 1 10.21 1 12s.43 3.47 1.18 4.96l3.68-2.84z" fill="currentColor"/>
-              <path d="M12 5.38c1.62 0 3.06.56 4.2 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.72 1 4.01 3.39 2.18 7.04l3.68 2.84c.86-2.59 3.28-4.5 6.14-4.5z" fill="currentColor"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21.805 10.023H12.24v3.957h5.484c-.236 1.273-.944 2.351-2.006 3.075v2.554h3.24c1.897-1.747 2.99-4.319 2.99-7.366 0-.719-.065-1.408-.143-2.22Z" fill="#4285F4"/>
+              <path d="M12.24 23c2.708 0 4.982-.897 6.643-2.437l-3.24-2.554c-.9.603-2.05.959-3.403.959-2.617 0-4.832-1.768-5.625-4.146H3.267v2.635A10.034 10.034 0 0 0 12.24 23Z" fill="#34A853"/>
+              <path d="M6.615 14.822A5.99 5.99 0 0 1 6.3 12.999c0-.632.11-1.246.315-1.823V8.541H3.267A10.035 10.035 0 0 0 2.2 13c0 1.603.383 3.122 1.067 4.459l3.348-2.637Z" fill="#FBBC04"/>
+              <path d="M12.24 7.03c1.474 0 2.796.507 3.838 1.503l2.88-2.88C17.218 4.03 14.946 3 12.24 3A10.034 10.034 0 0 0 3.267 8.541l3.348 2.635C7.408 8.798 9.623 7.03 12.24 7.03Z" fill="#EA4335"/>
             </svg>
             Continue with Google
           </motion.button>
+
+
         </motion.div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+        <div className="profile-container" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
           <AnimatePresence>
             {showConfirmation && (
               <motion.div
@@ -236,19 +293,20 @@ export default function ProfileDashboard() {
             )}
           </AnimatePresence>
 
-          <div style={{
+          <div className="welcome-card" style={{
             background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 16,
             padding: 32, display: "flex", alignItems: "center", gap: 24
           }}>
-            <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--bg-base)" }}>
+            <div className="welcome-avatar" style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--bg-base)", flexShrink: 0 }}>
               <User size={32} />
             </div>
-            <div style={{ flex: 1 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 600, color: "var(--text-main)", marginBottom: 4 }}>Welcome back!</h2>
-              <p style={{ fontSize: 14, color: "var(--text-muted)" }}>{user?.user_metadata?.full_name || user?.email}</p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 className="welcome-title" style={{ fontSize: 24, fontWeight: 600, color: "var(--text-main)", marginBottom: 4 }}>Welcome back!</h2>
+              <p className="welcome-subtitle" style={{ fontSize: 14, color: "var(--text-muted)", overflowWrap: "anywhere" }}>{user?.user_metadata?.full_name || user?.email}</p>
             </div>
             <button
               onClick={handleLogout}
+              className="welcome-cta"
               style={{
                 display: "flex", alignItems: "center", gap: 8,
                 background: "transparent", color: "#ef4444", border: "1px solid #ef4444",

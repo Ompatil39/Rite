@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono, Cormorant_Garamond } from 'next/font/google';
 import './globals.css'; // Global styles
 import FloatingNavLayout from '@/components/floating-nav-layout';
 import ThemeToggle from '@/components/theme-toggle';
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,6 +35,8 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
           {children}
         </FloatingNavLayout>
         <ThemeToggle />
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );

@@ -1,34 +1,36 @@
-"use client";
+﻿"use client";
 
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { motion } from "motion/react";
 import { MAX_HABIT_NAME_LENGTH, SUGGESTED_HABITS } from "./constants";
+import { clampHabitName } from "./utils";
 
 type EmptyStateProps = {
-  newHabit: string;
-  setNewHabit: (v: string) => void;
-  newCategory: string;
-  setNewCategory: (v: string) => void;
-  inputFocused: boolean;
-  setInputFocused: (v: boolean) => void;
   isMobile: boolean;
-  onAdd: () => void;
-  onAddSuggested: (name: string, category: string) => void;
+  onAdd: (name: string, category: string) => void | Promise<void>;
+  onAddSuggested: (name: string, category: string) => void | Promise<void>;
 };
 
 export default function EmptyState({
-  newHabit,
-  setNewHabit,
-  newCategory,
-  setNewCategory,
-  inputFocused,
-  setInputFocused,
   isMobile,
   onAdd,
   onAddSuggested,
 }: EmptyStateProps) {
+  const [newHabit, setNewHabit] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [inputFocused, setInputFocused] = useState(false);
+
   const habitNameCount = newHabit.length;
   const showCounter = inputFocused || habitNameCount > 0;
+
+  const handleAdd = () => {
+    const name = clampHabitName(newHabit.trim());
+    if (!name) return;
+    void onAdd(name, newCategory.trim());
+    setNewHabit("");
+    setNewCategory("");
+  };
 
   return (
     <div
@@ -193,10 +195,10 @@ export default function EmptyState({
               placeholder="Cultivate a new habit..."
               value={newHabit}
               maxLength={MAX_HABIT_NAME_LENGTH}
-              onChange={(e) => setNewHabit(e.target.value.slice(0, MAX_HABIT_NAME_LENGTH))}
+              onChange={(e) => setNewHabit(clampHabitName(e.target.value))}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
-              onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
             />
             <input
               className="es-add-input es-add-input-cat"
@@ -205,9 +207,9 @@ export default function EmptyState({
               onChange={(e) => setNewCategory(e.target.value)}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setInputFocused(false)}
-              onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
             />
-            <button className="es-add-btn" onClick={onAdd} title="Add habit" style={{ marginLeft: 8 }}>
+            <button className="es-add-btn" onClick={handleAdd} title="Add habit" style={{ marginLeft: 8 }}>
               <Plus size={16} color="#0a0a0a" strokeWidth={2.5} />
             </button>
           </div>

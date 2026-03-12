@@ -1,68 +1,88 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import {
-  ChevronLeft, ChevronRight, Trash2, Plus,
-  ChevronDown, Edit2, GripVertical, Calendar,
-} from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import dynamic from "next/dynamic";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import type { DropResult } from "@hello-pangea/dnd";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-import { MONTHS, STATUS, S, PILL_W, PILL_H, PILL_GAP, MAX_HABIT_NAME_LENGTH, SUGGESTED_HABITS } from "./constants";
+import { MONTHS, STATUS, S } from "./constants";
 import type { Habit } from "./types";
-import { getDaysInMonth, getStreak, getPct, clampHabitName, hapticFeedback } from "./utils";
-import { IconFire, IconClock } from "./icons";
-import HeatmapCalendar from "./HeatmapCalendar";
+import {
+  getDaysInMonth,
+  getStreak,
+  getPct,
+  clampHabitName,
+  hapticFeedback,
+} from "./utils";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
-import DeleteCategoryModal from "./DeleteCategoryModal";
+import HabitComposer from "./HabitComposer";
+
+const HabitGrid = dynamic(() => import("./HabitGrid"), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        padding: "24px 0",
+        textAlign: "center",
+        color: "var(--text-muted)",
+        fontSize: 12,
+      }}
+    >
+      Loading habits...
+    </div>
+  ),
+});
+
+const DeleteCategoryModal = dynamic(() => import("./DeleteCategoryModal"), {
+  ssr: false,
+});
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function HabitTracker() {
-  const [now, setNow]                               = useState(() => new Date());
-  const [month, setMonth]                           = useState(() => new Date().getMonth());
-  const [year, setYear]                             = useState(() => new Date().getFullYear());
-  const [habits, setHabits]                         = useState<Habit[]>([]);
-  const [newHabit, setNewHabit]                     = useState("");
-  const [newCategory, setNewCategory]               = useState("");
-  const [inputFocused, setInputFocused]             = useState(false);
-  const [pulsingCell, setPulsingCell]               = useState<string | null>(null);
-  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
-  const [editingCategory, setEditingCategory]       = useState<string | null>(null);
-  const [editCategoryName, setEditCategoryName]     = useState("");
-  const [categoryToDelete, setCategoryToDelete]     = useState<string | null>(null);
-  const [categoryOrder, setCategoryOrder]           = useState<string[]>([]);
-  const [mounted, setMounted]                       = useState(false);
-  const [loading, setLoading]                       = useState(true);
-  const [expandedCalendar, setExpandedCalendar]     = useState<string | null>(null);
-  const [isMonthView, setIsMonthView]               = useState(true);
-  const [isMobile, setIsMobile]                     = useState(false);
-  const [touchY, setTouchY]                         = useState<number | null>(null);
-  const [user, setUser]                             = useState<User | null>(null);
-  const [heatmapLogs, setHeatmapLogs]               = useState<Record<string, Record<string, number>>>({});
+  const [now, setNow] = useState(() => new Date());
+  const [month, setMonth] = useState(() => new Date().getMonth());
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [habits, setHabits] = useState<Habit[]>([]);
+
+  const [pulsingCell, setPulsingCell] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<
+    Record<string, boolean>
+  >({});
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [expandedCalendar, setExpandedCalendar] = useState<string | null>(null);
+  const [isMonthView, setIsMonthView] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [touchY, setTouchY] = useState<number | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   const hoveredCellRef = useRef<{ hid: string; idx: number } | null>(null);
-  const cycleRef       = useRef<any>(null);
-  const supabaseRef    = useRef(createClient());
+  const cycleRef = useRef<any>(null);
+  const supabaseRef = useRef(createClient());
 
-  const habitNameCount        = newHabit.length;
-  const showHabitNameCounter  = inputFocused || habitNameCount > 0;
-  const setHabitNameWithLimit = (value: string) => setNewHabit(clampHabitName(value));
-
-  const dim            = getDaysInMonth(month, year);
-  const dayNums        = Array.from({ length: dim }, (_, i) => i + 1);
-  const today          = now.getDate();
-  const isCurrent      = month === now.getMonth() && year === now.getFullYear();
-  const isFutureMonth  = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth());
+  const dim = getDaysInMonth(month, year);
+  const dayNums = Array.from({ length: dim }, (_, i) => i + 1);
+  const today = now.getDate();
+  const isCurrent = month === now.getMonth() && year === now.getFullYear();
+  const isFutureMonth =
+    year > now.getFullYear() ||
+    (year === now.getFullYear() && month > now.getMonth());
 
   const currentWeekStart = today - (now.getDay() === 0 ? 6 : now.getDay() - 1);
-  const weekStart        = isCurrent ? Math.max(1, currentWeekStart) : 1;
-  const weekEnd          = Math.min(dim, weekStart + 6);
-  const visibleDays      = isMonthView ? dayNums : dayNums.filter((d) => d >= weekStart && d <= weekEnd);
+  const weekStart = isCurrent ? Math.max(1, currentWeekStart) : 1;
+  const weekEnd = Math.min(dim, weekStart + 6);
+  const visibleDays = isMonthView
+    ? dayNums
+    : dayNums.filter((d) => d >= weekStart && d <= weekEnd);
 
   // -------------------------------------------------------------------------
   // Trigger pulse animation on a cell
@@ -76,90 +96,120 @@ export default function HabitTracker() {
   // -------------------------------------------------------------------------
   // Cycle cell status
   // -------------------------------------------------------------------------
-  function cycleStatus(hid: string, idx: number, reverse = false, pulse = false) {
+  function cycleStatus(
+    hid: string,
+    idx: number,
+    reverse = false,
+    pulse = false,
+  ) {
     setHabits((prev) =>
       prev.map((h) => {
         if (h.id !== hid) return h;
         const days = [...h.days];
-        const cur  = days[idx];
+        const cur = days[idx];
         const next = reverse
-          ? (cur === STATUS.NONE ? STATUS.MISSED : cur === STATUS.MISSED ? STATUS.PARTIAL : cur === STATUS.PARTIAL ? STATUS.DONE : STATUS.NONE)
-          : (cur === STATUS.NONE ? STATUS.DONE   : cur === STATUS.DONE   ? STATUS.PARTIAL : cur === STATUS.PARTIAL ? STATUS.MISSED : STATUS.NONE);
+          ? cur === STATUS.NONE
+            ? STATUS.MISSED
+            : cur === STATUS.MISSED
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.DONE
+                : STATUS.NONE
+          : cur === STATUS.NONE
+            ? STATUS.DONE
+            : cur === STATUS.DONE
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.MISSED
+                : STATUS.NONE;
         days[idx] = next;
         hapticFeedback(next);
 
         if (user) {
           const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(idx + 1).padStart(2, "0")}`;
           if (next === STATUS.NONE) {
-            supabaseRef.current.from("habit_logs").delete().eq("habit_id", hid).eq("date", dateStr).then();
+            supabaseRef.current
+              .from("habit_logs")
+              .delete()
+              .eq("habit_id", hid)
+              .eq("date", dateStr)
+              .then();
           } else {
             supabaseRef.current
               .from("habit_logs")
-              .upsert({ habit_id: hid, date: dateStr, status: next }, { onConflict: "habit_id,date" })
+              .upsert(
+                { habit_id: hid, date: dateStr, status: next },
+                { onConflict: "habit_id,date" },
+              )
               .then();
           }
         }
 
         return { ...h, days };
-      })
+      }),
     );
     if (pulse) triggerPulse(hid, idx);
   }
 
-  useEffect(() => { cycleRef.current = cycleStatus; });
+  useEffect(() => {
+    cycleRef.current = cycleStatus;
+  });
 
   // -------------------------------------------------------------------------
   // Load habits from Supabase
   // -------------------------------------------------------------------------
-  const loadHabitsFromDB = useCallback(async (userId: string, m: number, y: number) => {
-    const supabase     = supabaseRef.current;
-    const daysInMonth  = getDaysInMonth(m, y);
+  const loadHabitsFromDB = useCallback(
+    async (userId: string, m: number, y: number) => {
+      const supabase = supabaseRef.current;
+      const daysInMonth = getDaysInMonth(m, y);
 
-    const { data: habitsData } = await supabase
-      .from("habits")
-      .select("*")
-      .eq("user_id", userId)
-      .order("sort_order", { ascending: true });
+      const { data: habitsData } = await supabase
+        .from("habits")
+        .select("*")
+        .eq("user_id", userId)
+        .order("sort_order", { ascending: true });
 
-    if (!habitsData || habitsData.length === 0) {
-      setHabits([]);
-      return;
-    }
+      if (!habitsData || habitsData.length === 0) {
+        setHabits([]);
+        return;
+      }
 
-    const startDate = `${y}-${String(m + 1).padStart(2, "0")}-01`;
-    const endDate   = `${y}-${String(m + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
-    const habitIds  = habitsData.map((h: any) => h.id);
+      const startDate = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      const endDate = `${y}-${String(m + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+      const habitIds = habitsData.map((h: any) => h.id);
 
-    const { data: logsData } = await supabase
-      .from("habit_logs")
-      .select("*")
-      .in("habit_id", habitIds)
-      .gte("date", startDate)
-      .lte("date", endDate);
+      const { data: logsData } = await supabase
+        .from("habit_logs")
+        .select("*")
+        .in("habit_id", habitIds)
+        .gte("date", startDate)
+        .lte("date", endDate);
 
-    const logsMap: Record<string, Record<number, number>> = {};
-    (logsData || []).forEach((log: any) => {
-      if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
-      const day = new Date(log.date + "T00:00:00").getDate();
-      logsMap[log.habit_id][day - 1] = log.status;
-    });
-
-    const assembled: Habit[] = habitsData.map((h: any) => {
-      const days = Array(31).fill(STATUS.NONE);
-      Object.entries(logsMap[h.id] || {}).forEach(([idx, status]) => {
-        days[Number(idx)] = status;
+      const logsMap: Record<string, Record<number, number>> = {};
+      (logsData || []).forEach((log: any) => {
+        if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
+        const day = new Date(log.date + "T00:00:00").getDate();
+        logsMap[log.habit_id][day - 1] = log.status;
       });
-      return {
-        id: h.id,
-        name: h.name,
-        category: h.category || "Uncategorized",
-        sort_order: h.sort_order,
-        days,
-      };
-    });
 
-    setHabits(assembled);
-  }, []);
+      const assembled: Habit[] = habitsData.map((h: any) => {
+        const days = Array(31).fill(STATUS.NONE);
+        Object.entries(logsMap[h.id] || {}).forEach(([idx, status]) => {
+          days[Number(idx)] = status;
+        });
+        return {
+          id: h.id,
+          name: h.name,
+          category: h.category || "Uncategorized",
+          sort_order: h.sort_order,
+          days,
+        };
+      });
+
+      setHabits(assembled);
+    },
+    [],
+  );
 
   // Re-load on month/year change
   useEffect(() => {
@@ -175,7 +225,7 @@ export default function HabitTracker() {
     // Refresh `now` when the calendar day rolls over (checked every minute)
     const dayRefresh = setInterval(() => {
       const fresh = new Date();
-      setNow(prev => (fresh.getDate() !== prev.getDate() ? fresh : prev));
+      setNow((prev) => (fresh.getDate() !== prev.getDate() ? fresh : prev));
     }, 60_000);
 
     const checkMobile = () => {
@@ -188,23 +238,28 @@ export default function HabitTracker() {
     window.addEventListener("resize", checkMobile);
 
     const supabase = supabaseRef.current;
-    supabase.auth.getUser().then(async ({ data: { user: u } }) => {
-      if (u) {
-        setUser(u);
-        await loadHabitsFromDB(u.id, now.getMonth(), now.getFullYear());
-      }
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    supabase.auth
+      .getUser()
+      .then(async ({ data: { user: u } }) => {
+        if (u) {
+          setUser(u);
+          await loadHabitsFromDB(u.id, now.getMonth(), now.getFullYear());
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        loadHabitsFromDB(session.user.id, month, year);
-      } else {
-        setUser(null);
-        setHabits([]);
-      }
-    });
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          loadHabitsFromDB(session.user.id, month, year);
+        } else {
+          setUser(null);
+          setHabits([]);
+        }
+      },
+    );
 
     return () => {
       clearInterval(dayRefresh);
@@ -220,7 +275,12 @@ export default function HabitTracker() {
       if (hoveredCellRef.current) {
         e.preventDefault();
         e.stopPropagation();
-        cycleRef.current(hoveredCellRef.current.hid, hoveredCellRef.current.idx, e.deltaY < 0, true);
+        cycleRef.current(
+          hoveredCellRef.current.hid,
+          hoveredCellRef.current.idx,
+          e.deltaY < 0,
+          true,
+        );
       }
     };
     document.addEventListener("wheel", handleWheel, { passive: false });
@@ -231,10 +291,16 @@ export default function HabitTracker() {
   // Month navigation
   // -------------------------------------------------------------------------
   function prevMonth() {
-    if (month === 0) { setMonth(11); setYear((y) => y - 1); } else setMonth((m) => m - 1);
+    if (month === 0) {
+      setMonth(11);
+      setYear((y) => y - 1);
+    } else setMonth((m) => m - 1);
   }
   function nextMonth() {
-    if (month === 11) { setMonth(0); setYear((y) => y + 1); } else setMonth((m) => m + 1);
+    if (month === 11) {
+      setMonth(0);
+      setYear((y) => y + 1);
+    } else setMonth((m) => m + 1);
   }
 
   // -------------------------------------------------------------------------
@@ -243,57 +309,52 @@ export default function HabitTracker() {
 
   // Shared core: optimistically adds to state, then syncs to DB.
   // On DB error the temp row is rolled back.
-  async function insertHabit(name: string, category: string) {
-    const tempId: string  = `temp-${crypto.randomUUID()}`;
-    const sortOrder       = habits.length;
-    const optimistic: Habit = {
-      id: tempId, name, category,
-      days: Array(31).fill(STATUS.NONE),
-      sort_order: sortOrder,
-    };
+  const insertHabit = useCallback(
+    async (rawName: string, rawCategory: string) => {
+      const name = clampHabitName(rawName.trim());
+      if (!name) return;
+      const category = rawCategory.trim() || "Uncategorized";
 
-    // 1. Show immediately — no waiting on network
-    setHabits(prev => [...prev, optimistic]);
+      const tempId: string = `temp-${crypto.randomUUID()}`;
+      const sortOrder = habits.length;
+      const optimistic: Habit = {
+        id: tempId,
+        name,
+        category,
+        days: Array(31).fill(STATUS.NONE),
+        sort_order: sortOrder,
+      };
 
-    if (user) {
-      const { data, error } = await supabaseRef.current
-        .from("habits")
-        .insert({ user_id: user.id, name, category, sort_order: sortOrder })
-        .select()
-        .single();
+      // 1. Show immediately -- no waiting on network
+      setHabits((prev) => [...prev, optimistic]);
 
-      if (error) {
-        // Rollback the optimistic row
-        setHabits(prev => prev.filter(h => h.id !== tempId));
-      } else if (data) {
-        // Swap temp id → real DB id
-        setHabits(prev =>
-          prev.map(h => h.id === tempId
-            ? { ...h, id: data.id, sort_order: data.sort_order }
-            : h
-          )
-        );
+      if (user) {
+        const { data, error } = await supabaseRef.current
+          .from("habits")
+          .insert({ user_id: user.id, name, category, sort_order: sortOrder })
+          .select()
+          .single();
+
+        if (error) {
+          // Rollback the optimistic row
+          setHabits((prev) => prev.filter((h) => h.id !== tempId));
+        } else if (data) {
+          // Swap temp id -> real DB id
+          setHabits((prev) =>
+            prev.map((h) =>
+              h.id === tempId
+                ? { ...h, id: data.id, sort_order: data.sort_order }
+                : h,
+            ),
+          );
+        }
       }
-    }
-  }
-
-  async function addHabit() {
-    const name = clampHabitName(newHabit.trim());
-    if (!name) return;
-    await insertHabit(name, newCategory.trim() || "Uncategorized");
-    setNewHabit("");
-    setNewCategory("");
-  }
-
-  async function addSuggestedHabit(name: string, category: string) {
-    const clamped = clampHabitName(name.trim());
-    if (!clamped) return;
-    await insertHabit(clamped, category);
-  }
-
+    },
+    [habits.length, user],
+  );
   async function removeHabit(id: string) {
-    setHabits(prev => prev.filter(h => h.id !== id));
-    setExpandedCalendar(cur => (cur === id ? null : cur));
+    setHabits((prev) => prev.filter((h) => h.id !== id));
+    setExpandedCalendar((cur) => (cur === id ? null : cur));
     if (user) await supabaseRef.current.from("habits").delete().eq("id", id);
   }
 
@@ -312,11 +373,22 @@ export default function HabitTracker() {
   const saveCategoryEdit = async (oldCat: string) => {
     const newCat = editCategoryName.trim();
     if (newCat && newCat !== oldCat) {
-      setHabits((prev) => prev.map((h) => ((h.category || "Uncategorized") === oldCat ? { ...h, category: newCat } : h)));
+      setHabits((prev) =>
+        prev.map((h) =>
+          (h.category || "Uncategorized") === oldCat
+            ? { ...h, category: newCat }
+            : h,
+        ),
+      );
       if (user) {
-        const ids = habits.filter((h) => (h.category || "Uncategorized") === oldCat).map((h) => h.id);
+        const ids = habits
+          .filter((h) => (h.category || "Uncategorized") === oldCat)
+          .map((h) => h.id);
         if (ids.length > 0) {
-          await supabaseRef.current.from("habits").update({ category: newCat }).in("id", ids);
+          await supabaseRef.current
+            .from("habits")
+            .update({ category: newCat })
+            .in("id", ids);
         }
       }
     }
@@ -330,14 +402,23 @@ export default function HabitTracker() {
 
   const executeDeleteCategory = async () => {
     if (!categoryToDelete) return;
-    const ids = habits.filter((h) => (h.category || "Uncategorized") === categoryToDelete).map((h) => h.id);
+    const ids = habits
+      .filter((h) => (h.category || "Uncategorized") === categoryToDelete)
+      .map((h) => h.id);
     setHabits((prev) =>
-      prev.map((h) => ((h.category || "Uncategorized") === categoryToDelete ? { ...h, category: "Uncategorized" } : h))
+      prev.map((h) =>
+        (h.category || "Uncategorized") === categoryToDelete
+          ? { ...h, category: "Uncategorized" }
+          : h,
+      ),
     );
     // Prune the deleted category from the order array so it never re-appears
-    setCategoryOrder(prev => prev.filter(c => c !== categoryToDelete));
+    setCategoryOrder((prev) => prev.filter((c) => c !== categoryToDelete));
     if (user && ids.length > 0) {
-      await supabaseRef.current.from("habits").update({ category: "Uncategorized" }).in("id", ids);
+      await supabaseRef.current
+        .from("habits")
+        .update({ category: "Uncategorized" })
+        .in("id", ids);
     }
     setCategoryToDelete(null);
   };
@@ -347,13 +428,16 @@ export default function HabitTracker() {
   // -------------------------------------------------------------------------
   const groupedHabits = useMemo(
     () =>
-      habits.reduce((acc, habit) => {
-        const cat = habit.category || "Uncategorized";
-        if (!acc[cat]) acc[cat] = [];
-        acc[cat].push(habit);
-        return acc;
-      }, {} as Record<string, Habit[]>),
-    [habits]
+      habits.reduce(
+        (acc, habit) => {
+          const cat = habit.category || "Uncategorized";
+          if (!acc[cat]) acc[cat] = [];
+          acc[cat].push(habit);
+          return acc;
+        },
+        {} as Record<string, Habit[]>,
+      ),
+    [habits],
   );
 
   useEffect(() => {
@@ -374,9 +458,40 @@ export default function HabitTracker() {
 
   const sortedCategories = useMemo(() => {
     const sorted = categoryOrder.filter((c) => groupedHabits[c]);
-    Object.keys(groupedHabits).forEach((c) => { if (!sorted.includes(c)) sorted.push(c); });
+    Object.keys(groupedHabits).forEach((c) => {
+      if (!sorted.includes(c)) sorted.push(c);
+    });
     return sorted;
   }, [categoryOrder, groupedHabits]);
+
+  const habitStats = useMemo(() => {
+    const stats: Record<string, { streak: number; pct: number }> = {};
+    habits.forEach((habit) => {
+      stats[habit.id] = {
+        streak: getStreak(habit.days, dim),
+        pct: getPct(habit.days, dim),
+      };
+    });
+    return stats;
+  }, [habits, dim]);
+
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, { activeStreaks: number; avgPct: number }> = {};
+    Object.entries(groupedHabits).forEach(([cat, catHabits]) => {
+      let activeStreaks = 0;
+      let pctSum = 0;
+      catHabits.forEach((habit) => {
+        const hStats = habitStats[habit.id];
+        if (hStats?.streak > 0) activeStreaks++;
+        pctSum += hStats?.pct ?? 0;
+      });
+      stats[cat] = {
+        activeStreaks,
+        avgPct: catHabits.length ? Math.round(pctSum / catHabits.length) : 0,
+      };
+    });
+    return stats;
+  }, [groupedHabits, habitStats]);
 
   // -------------------------------------------------------------------------
   // Drag & drop
@@ -394,16 +509,19 @@ export default function HabitTracker() {
     }
 
     if (type === "habit") {
-      const srcCat  = source.droppableId;
+      const srcCat = source.droppableId;
       const destCat = destination.droppableId;
 
       if (srcCat === destCat) {
         const arr = Array.from(groupedHabits[srcCat]);
         const [removed] = arr.splice(source.index, 1);
         arr.splice(destination.index, 0, removed);
-        setHabits((prev) => [...prev.filter((h) => (h.category || "Uncategorized") !== srcCat), ...arr]);
+        setHabits((prev) => [
+          ...prev.filter((h) => (h.category || "Uncategorized") !== srcCat),
+          ...arr,
+        ]);
       } else {
-        const srcArr  = Array.from(groupedHabits[srcCat]);
+        const srcArr = Array.from(groupedHabits[srcCat]);
         const destArr = Array.from(groupedHabits[destCat] || []);
         const [removed] = srcArr.splice(source.index, 1);
         removed.category = destCat === "Uncategorized" ? "" : destCat;
@@ -424,7 +542,8 @@ export default function HabitTracker() {
   // Memoize static styles so the string isn't recreated on every render
   // NOTE: must be above all early returns to satisfy Rules of Hooks
   // -------------------------------------------------------------------------
-  const cssStyles = useMemo(() => `
+  const cssStyles = useMemo(
+    () => `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root.light .habit-card { background: #ffffff !important; border-color: var(--border-main) !important; box-shadow: 0 0.25rem 1rem rgba(0,0,0,0.03) !important; }
@@ -621,26 +740,22 @@ export default function HabitTracker() {
 
         ::-webkit-scrollbar { height: 0.25rem; width: 0.25rem; background: var(--bg-base); }
         ::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 0.25rem; }
-  `, []);
+  `,
+    [],
+  );
 
   // -------------------------------------------------------------------------
   // Early returns (placed after all hooks to satisfy Rules of Hooks)
   // -------------------------------------------------------------------------
   if (!mounted) return null;
-  if (loading)  return <LoadingSkeleton />;
+  if (loading) return <LoadingSkeleton />;
 
   if (habits.length === 0) {
     return (
       <EmptyState
-        newHabit={newHabit}
-        setNewHabit={setHabitNameWithLimit}
-        newCategory={newCategory}
-        setNewCategory={setNewCategory}
-        inputFocused={inputFocused}
-        setInputFocused={setInputFocused}
         isMobile={isMobile}
-        onAdd={addHabit}
-        onAddSuggested={addSuggestedHabit}
+        onAdd={insertHabit}
+        onAddSuggested={insertHabit}
       />
     );
   }
@@ -689,7 +804,11 @@ export default function HabitTracker() {
               boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
             }}
           >
-            <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}>
+            <button
+              className="nav-btn"
+              onClick={prevMonth}
+              style={{ width: 28, height: 28 }}
+            >
               <ChevronLeft size={14} />
             </button>
             <span
@@ -706,7 +825,11 @@ export default function HabitTracker() {
             >
               {MONTHS[month].toUpperCase()} {year}
             </span>
-            <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}>
+            <button
+              className="nav-btn"
+              onClick={nextMonth}
+              style={{ width: 28, height: 28 }}
+            >
               <ChevronRight size={14} />
             </button>
           </div>
@@ -733,9 +856,13 @@ export default function HabitTracker() {
               }}
             >
               {isMonthView ? (
-                <><ChevronRight size={14} /> Weekly</>
+                <>
+                  <ChevronRight size={14} /> Weekly
+                </>
               ) : (
-                <><ChevronDown size={14} /> Monthly</>
+                <>
+                  <ChevronDown size={14} /> Monthly
+                </>
               )}
             </button>
           )}
@@ -746,14 +873,25 @@ export default function HabitTracker() {
         {/* ------------------------------------------------------------------ */}
         <div
           className="legend-container"
-          style={{ display: "flex", justifyContent: "flex-end", gap: 24, marginBottom: 20 }}
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 24,
+            marginBottom: 20,
+          }}
         >
           {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => (
-            <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <div
+              key={s}
+              style={{ display: "flex", alignItems: "center", gap: 7 }}
+            >
               <div
                 style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: S[s].bg, boxShadow: S[s].glow,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: S[s].bg,
+                  boxShadow: S[s].glow,
                 }}
               />
               <span
@@ -773,577 +911,45 @@ export default function HabitTracker() {
         {/* ------------------------------------------------------------------ */}
         {/* Scrollable grid                                                     */}
         {/* ------------------------------------------------------------------ */}
-        <div
-          className="scroll-container"
-          style={{
-            overflowX: "auto",
-            paddingBottom: 24,
-            paddingTop: 60,
-            marginTop: -60,
-            marginLeft: -36,
-            marginRight: -36,
-            paddingLeft: 36,
-            paddingRight: 36,
-          }}
-          onTouchStart={(e) => isMobile && setTouchY(e.touches[0].clientY)}
-          onTouchEnd={(e) => {
-            if (!isMobile || touchY === null) return;
-            const diff = e.changedTouches[0].clientY - touchY;
-            if (diff > 60) setIsMonthView(true);
-            else if (diff < -60) setIsMonthView(false);
-            setTouchY(null);
-          }}
-        >
-          <div style={{ minWidth: "max-content" }}>
-
-            {/* Day header row */}
-            <div
-              className="day-header-container"
-              style={{
-                paddingLeft: 260,
-                marginBottom: 12,
-                display: "flex",
-                gap: PILL_GAP,
-                alignItems: "center",
-              }}
-            >
-              <AnimatePresence>
-                {visibleDays.map((d, di) => {
-                  const isT = isCurrent && d === today;
-                  const dominoDelay = di * 0.022;
-                  return (
-                    <motion.div
-                      key={d}
-                      className={`day-header ${isT ? "is-today" : ""}`}
-                      initial={{ width: 0, opacity: 0, y: -6 }}
-                      animate={{ width: PILL_W, opacity: 1, y: 0 }}
-                      exit={{
-                        width: 0, opacity: 0, y: -6,
-                        transition: { duration: 0.14, delay: (visibleDays.length - 1 - di) * 0.012 },
-                      }}
-                      transition={{
-                        width:   { duration: 0.18, delay: dominoDelay, ease: [0.22, 1, 0.36, 1] },
-                        opacity: { duration: 0.16, delay: dominoDelay },
-                        y:       { type: "spring", stiffness: 520, damping: 30, delay: dominoDelay },
-                      }}
-                      style={{
-                        textAlign: "center",
-                        flexShrink: 0,
-                        fontSize: 13,
-                        fontFamily: "var(--font-mono), monospace",
-                        color: isT ? "var(--accent)" : "var(--text-muted)",
-                        fontWeight: isT ? "700" : "500",
-                        position: "relative",
-                        paddingBottom: 6,
-                      }}
-                    >
-                      {String(d).padStart(2, "0")}
-                      {isT && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            bottom: 0,
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            width: 4,
-                            height: 4,
-                            borderRadius: "50%",
-                            background: "var(--accent)",
-                          }}
-                        />
-                      )}
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-
-            {/* ---------------------------------------------------------------- */}
-            {/* Drag & drop categories + habits                                  */}
-            {/* ---------------------------------------------------------------- */}
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="categories" type="category">
-                {(provided) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    style={{ display: "flex", flexDirection: "column", gap: 24, width: "max-content" }}
-                  >
-                    {sortedCategories.map((cat, catIndex) => {
-                      const isCollapsed = collapsedCategories[cat];
-                      const catHabits   = groupedHabits[cat];
-
-                      return (
-                        <Draggable draggableId={`cat-${cat}`} index={catIndex} key={cat}>
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              style={{ ...provided.draggableProps.style, display: "flex", flexDirection: "column", gap: 12 }}
-                            >
-                              {/* Category header */}
-                              <div
-                                className="cat-header-group"
-                                onClick={() => !editingCategory && toggleCategory(cat)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 12,
-                                  cursor: editingCategory === cat ? "default" : "pointer",
-                                  padding: "4px 0",
-                                  color: "var(--text-muted)",
-                                  transition: "color 0.2s",
-                                  width: "max-content",
-                                }}
-                                onMouseEnter={(e) => { if (editingCategory !== cat) e.currentTarget.style.color = "var(--accent)"; }}
-                                onMouseLeave={(e) => { if (editingCategory !== cat) e.currentTarget.style.color = "var(--text-muted)"; }}
-                              >
-                                <div
-                                  {...provided.dragHandleProps}
-                                  onClick={(e) => e.stopPropagation()}
-                                  style={{ cursor: "grab", color: "var(--text-muted)", display: "flex", alignItems: "center", padding: 4 }}
-                                >
-                                  <GripVertical size={16} />
-                                </div>
-                                <ChevronDown
-                                  size={16}
-                                  style={{
-                                    transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                                    transition: "transform 0.2s",
-                                    opacity: editingCategory === cat ? 0.3 : 1,
-                                  }}
-                                />
-
-                                {editingCategory === cat ? (
-                                  <input
-                                    value={editCategoryName}
-                                    onChange={(e) => setEditCategoryName(e.target.value)}
-                                    onBlur={() => saveCategoryEdit(cat)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") saveCategoryEdit(cat);
-                                      if (e.key === "Escape") setEditingCategory(null);
-                                    }}
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      background: "var(--bg-surface)",
-                                      border: "1px solid var(--border-main)",
-                                      color: "var(--text-main)",
-                                      padding: "4px 8px",
-                                      borderRadius: 4,
-                                      fontSize: 13,
-                                      fontFamily: "var(--font-body), sans-serif",
-                                      outline: "none",
-                                      width: 200,
-                                    }}
-                                  />
-                                ) : (
-                                  <>
-                                    <span
-                                      style={{
-                                        fontSize: 22,
-                                        fontWeight: 600,
-                                        color: "var(--accent)",
-                                        fontFamily: "var(--font-body), sans-serif",
-                                        lineHeight: 1,
-                                      }}
-                                    >
-                                      {cat}{" "}
-                                      <span style={{ opacity: 0.4, fontSize: 14, fontWeight: 500 }}>
-                                        ({catHabits.length})
-                                      </span>
-                                    </span>
-
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 12,
-                                        fontSize: 11,
-                                        fontFamily: "var(--font-body), sans-serif",
-                                      }}
-                                    >
-                                      <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Active Streaks">
-                                        <IconFire size={12} color="var(--accent)" />
-                                        {catHabits.filter((h) => getStreak(h.days, dim) > 0).length}
-                                      </span>
-                                      <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Average Completion">
-                                        <IconClock size={12} color="var(--status-done)" />
-                                        {Math.round(catHabits.reduce((sum, h) => sum + getPct(h.days, dim), 0) / catHabits.length) || 0}%
-                                      </span>
-                                    </div>
-
-                                    {cat !== "Uncategorized" && (
-                                      <div
-                                        className="cat-actions"
-                                        style={{ display: "flex", alignItems: "center", gap: 4, opacity: 0, transition: "opacity 0.2s" }}
-                                      >
-                                        <button className="cat-action-btn" onClick={(e) => startEditCategory(cat, e)} title="Edit Category">
-                                          <Edit2 size={14} />
-                                        </button>
-                                        <button className="cat-action-btn del" onClick={(e) => confirmDeleteCategory(cat, e)} title="Delete Category">
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-
-                              {/* Habits list */}
-                              <AnimatePresence initial={false}>
-                                {!isCollapsed && (
-                                  <motion.div
-                                    initial={{ height: 0, opacity: 0, overflow: "hidden" }}
-                                    animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
-                                    exit={{ height: 0, opacity: 0, overflow: "hidden" }}
-                                    transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                                  >
-                                    <Droppable droppableId={cat} type="habit">
-                                      {(provided) => (
-                                        <div
-                                          ref={provided.innerRef}
-                                          {...provided.droppableProps}
-                                          style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 4 }}
-                                        >
-                                          {catHabits.map((habit, hi) => {
-                                            const streak   = getStreak(habit.days, dim);
-                                            const pct      = getPct(habit.days, dim);
-                                            const pctColor = pct >= 80 ? "var(--status-done)" : pct >= 50 ? "var(--status-partial)" : pct > 0 ? "var(--status-missed)" : "var(--text-muted)";
-
-                                            return (
-                                              <Draggable draggableId={`habit-${habit.id}`} index={hi} key={habit.id}>
-                                                {(provided, snapshot) => (
-                                                  <div
-                                                    ref={provided.innerRef}
-                                                    {...provided.draggableProps}
-                                                    className="habit-card"
-                                                    style={{
-                                                      ...provided.draggableProps.style,
-                                                      padding: "20px 20px",
-                                                      display: "flex",
-                                                      flexDirection: "column",
-                                                      alignItems: "stretch",
-                                                      background: snapshot.isDragging ? "#1a1a1a" : "#121212",
-                                                      zIndex: snapshot.isDragging ? 999 : "auto",
-                                                    }}
-                                                  >
-                                                    <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-
-                                                      {/* Left panel */}
-                                                      <div
-                                                        className="habit-left-panel"
-                                                        style={{
-                                                          width: 240,
-                                                          flex: "0 0 240px",
-                                                          flexShrink: 0,
-                                                          paddingRight: 20,
-                                                          display: "flex",
-                                                          flexDirection: "column",
-                                                          justifyContent: "center",
-                                                          gap: 6,
-                                                        }}
-                                                      >
-                                                        {/* Row 1: drag handle + name */}
-                                                        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                                                          <div
-                                                            {...provided.dragHandleProps}
-                                                            style={{ cursor: "grab", color: "var(--text-muted)", display: "flex", alignItems: "center", flexShrink: 0 }}
-                                                          >
-                                                            <GripVertical size={16} />
-                                                          </div>
-                                                          <div className="habit-name-wrap">
-                                                            <span
-                                                              className="habit-name"
-                                                              style={{
-                                                                fontSize: 15,
-                                                                color: "var(--text-main)",
-                                                                fontWeight: 500,
-                                                                letterSpacing: "0.01em",
-                                                                display: "block",
-                                                                whiteSpace: "nowrap",
-                                                                overflow: "hidden",
-                                                                textOverflow: "ellipsis",
-                                                                transition: "color 0.18s",
-                                                                minWidth: 0,
-                                                              }}
-                                                            >
-                                                              {habit.name}
-                                                            </span>
-                                                            <div className="habit-name-tip">{habit.name}</div>
-                                                          </div>
-                                                        </div>
-
-                                                        {/* Row 2: stats + action buttons inline */}
-                                                        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 28 }}>
-                                                          {/* Stats */}
-                                                          <div className="habit-stats" style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                                                            <span
-                                                              className={streak > 0 ? "stat-text-active" : "stat-text"}
-                                                              style={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: 5,
-                                                                fontSize: 12,
-                                                                color: streak > 0 ? "#999" : "#555",
-                                                                fontFamily: "var(--font-mono), monospace",
-                                                              }}
-                                                            >
-                                                              <IconFire size={14} color={streak > 0 ? "var(--accent)" : "currentColor"} />
-                                                              <span style={{ opacity: streak > 0 ? 1 : 0.7 }}>{streak}d</span>
-                                                            </span>
-                                                            <span
-                                                              className="stat-text"
-                                                              style={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: 5,
-                                                                fontSize: 12,
-                                                                fontFamily: "var(--font-mono), monospace",
-                                                                color: pctColor,
-                                                              }}
-                                                            >
-                                                              <IconClock size={14} color={pctColor} />
-                                                              {pct}%
-                                                            </span>
-                                                          </div>
-
-                                                          {/* Action buttons — immediately right of stats */}
-                                                          <div style={{ display: "flex", gap: 1 }}>
-                                                            <button
-                                                              className={`cal-btn${expandedCalendar === habit.id ? " active" : ""}`}
-                                                              onClick={() => setExpandedCalendar(expandedCalendar === habit.id ? null : habit.id)}
-                                                              title="View Calendar"
-                                                            >
-                                                              <Calendar size={15} color="currentColor" />
-                                                            </button>
-                                                            <button
-                                                              className="del-btn"
-                                                              onClick={() => removeHabit(habit.id)}
-                                                              title="Delete habit"
-                                                            >
-                                                              <Trash2 size={15} color="currentColor" />
-                                                            </button>
-                                                          </div>
-                                                        </div>
-                                                      </div>
-
-                                                      {/* Pill track */}
-                                                      <div
-                                                        style={{
-                                                          display: "flex",
-                                                          gap: PILL_GAP,
-                                                          alignItems: "flex-end",
-                                                          height: PILL_H,
-                                                          flex: 1,
-                                                          minWidth: 0,
-                                                        }}
-                                                      >
-                                                        <AnimatePresence>
-                                                          {visibleDays.map((d, di) => {
-                                                            const idx        = d - 1;
-                                                            const status     = habit.days[idx];
-                                                            const isToday    = isCurrent && d === today;
-                                                            const isFuture   = isFutureMonth || (isCurrent && d > today);
-                                                            const isPulsing  = pulsingCell === `${habit.id}-${idx}`;
-                                                            const dateObj    = new Date(year, month, d);
-                                                            const dayName    = dateObj.toLocaleDateString("en-US", { weekday: "short" });
-                                                            const isMissed   = status === STATUS.MISSED;
-                                                            const dominoDelay = di * 0.022;
-
-                                                            return (
-                                                              <motion.div
-                                                                key={d}
-                                                                className="pill-container"
-                                                                style={{
-                                                                  position: "relative",
-                                                                  flexShrink: 0,
-                                                                  height: PILL_H,
-                                                                  display: "flex",
-                                                                  alignItems: "flex-end",
-                                                                  transformOrigin: "bottom",
-                                                                }}
-                                                                initial={{ width: 0, opacity: 0, y: 10, scaleY: 0.4 }}
-                                                                animate={{ width: PILL_W, opacity: 1, y: 0, scaleY: 1 }}
-                                                                exit={{
-                                                                  width: 0, opacity: 0, y: 10, scaleY: 0.4,
-                                                                  transition: { duration: 0.14, delay: (visibleDays.length - 1 - di) * 0.012 },
-                                                                }}
-                                                                transition={{
-                                                                  width:   { duration: 0.18, delay: dominoDelay, ease: [0.22, 1, 0.36, 1] },
-                                                                  opacity: { duration: 0.18, delay: dominoDelay },
-                                                                  y:       { type: "spring", stiffness: 520, damping: 30, delay: dominoDelay },
-                                                                  scaleY:  { type: "spring", stiffness: 520, damping: 30, delay: dominoDelay },
-                                                                }}
-                                                              >
-                                                                {!isFuture && (
-                                                                  <div className="tooltip">
-                                                                    {dayName}, {MONTHS[month].substring(0, 3)} {d} •{" "}
-                                                                    <span
-                                                                      style={{
-                                                                        color: S[status].border,
-                                                                        fontWeight: 600,
-                                                                      }}
-                                                                    >
-                                                                      {S[status].label}
-                                                                    </span>
-                                                                  </div>
-                                                                )}
-
-                                                                <motion.div
-                                                                  className={!isFuture ? "pill" : ""}
-                                                                  onClick={() => !isFuture && cycleStatus(habit.id, idx, false, true)}
-                                                                  onTouchEnd={(e) => {
-                                                                    if (isFuture) return;
-                                                                    e.preventDefault();
-                                                                    cycleStatus(habit.id, idx, false, true);
-                                                                  }}
-                                                                  onContextMenu={(e) => { e.preventDefault(); !isFuture && cycleStatus(habit.id, idx, true, true); }}
-                                                                  onMouseEnter={() => { if (!isFuture) hoveredCellRef.current = { hid: habit.id, idx }; }}
-                                                                  onMouseLeave={() => { hoveredCellRef.current = null; }}
-                                                                  initial={false}
-                                                                  animate={{
-                                                                    height: PILL_H,
-                                                                    backgroundColor: isFuture ? "transparent" : isMissed ? "var(--status-missed)" : "var(--pill-none)",
-                                                                    borderColor: isFuture ? "var(--border-main)" : isMissed ? "var(--status-missed)" : "var(--pill-none-border)",
-                                                                    scale: isPulsing ? 1.15 : 1,
-                                                                    filter: isPulsing ? "brightness(1.5)" : "brightness(1)",
-                                                                    boxShadow: isToday && !isFuture ? "0 0 0 2px #c9a227" : "none",
-                                                                    opacity: isFuture ? 0.5 : 1,
-                                                                  }}
-                                                                  transition={{
-                                                                    height:          { duration: 0.25, ease: [0.16, 1, 0.3, 1] },
-                                                                    backgroundColor: { duration: 0.35, ease: [0.16, 1, 0.3, 1] },
-                                                                    borderColor:     { duration: 0.35, ease: [0.16, 1, 0.3, 1] },
-                                                                    scale:           { type: "spring", stiffness: 280, damping: 22 },
-                                                                    filter:          { duration: 0.3, ease: "easeOut" },
-                                                                    boxShadow:       { duration: 0.3 },
-                                                                  }}
-                                                                  style={{
-                                                                    width: PILL_W,
-                                                                    borderRadius: 8,
-                                                                    borderWidth: 1,
-                                                                    borderStyle: "solid",
-                                                                    cursor: isFuture ? "default" : "pointer",
-                                                                    outline: "none",
-                                                                    flexShrink: 0,
-                                                                    overflow: "hidden",
-                                                                    position: "relative",
-                                                                  }}
-                                                                >
-                                                                  {status !== STATUS.NONE && status !== STATUS.MISSED && !isFuture && (
-                                                                    <motion.div
-                                                                      initial={false}
-                                                                      animate={{ height: status === STATUS.DONE ? "100%" : "100%" }}
-                                                                      transition={{ type: "spring", stiffness: 180, damping: 22 }}
-                                                                      style={{
-                                                                        position: "absolute",
-                                                                        bottom: 0, left: 0, right: 0,
-                                                                        background: status === STATUS.DONE ? "var(--status-done)" : "var(--status-partial)",
-                                                                        boxShadow: status === STATUS.DONE ? "0 0 10px var(--status-done-glow)" : "0 0 10px var(--status-partial-glow)",
-                                                                      }}
-                                                                    />
-                                                                  )}
-                                                                </motion.div>
-                                                              </motion.div>
-                                                            );
-                                                          })}
-                                                        </AnimatePresence>
-                                                      </div>
-                                                    </div>
-
-                                                    {/* Heatmap calendar */}
-                                                    <AnimatePresence>
-                                                      {expandedCalendar === habit.id && (
-                                                        <HeatmapCalendar
-                                                          habitId={habit.id}
-                                                          user={user}
-                                                          supabase={supabaseRef.current}
-                                                          heatmapLogs={heatmapLogs}
-                                                          setHeatmapLogs={setHeatmapLogs}
-                                                        />
-                                                      )}
-                                                    </AnimatePresence>
-                                                  </div>
-                                                )}
-                                              </Draggable>
-                                            );
-                                          })}
-                                          {provided.placeholder}
-                                        </div>
-                                      )}
-                                    </Droppable>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
-                    })}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-          </div>
-        </div>
-
+        <HabitGrid
+          isMobile={isMobile}
+          touchY={touchY}
+          setTouchY={setTouchY}
+          setIsMonthView={setIsMonthView}
+          visibleDays={visibleDays}
+          isCurrent={isCurrent}
+          today={today}
+          month={month}
+          year={year}
+          isFutureMonth={isFutureMonth}
+          onDragEnd={onDragEnd}
+          sortedCategories={sortedCategories}
+          groupedHabits={groupedHabits}
+          collapsedCategories={collapsedCategories}
+          editingCategory={editingCategory}
+          editCategoryName={editCategoryName}
+          setEditCategoryName={setEditCategoryName}
+          setEditingCategory={setEditingCategory}
+          toggleCategory={toggleCategory}
+          startEditCategory={startEditCategory}
+          saveCategoryEdit={saveCategoryEdit}
+          confirmDeleteCategory={confirmDeleteCategory}
+          categoryStats={categoryStats}
+          habitStats={habitStats}
+          expandedCalendar={expandedCalendar}
+          setExpandedCalendar={setExpandedCalendar}
+          removeHabit={removeHabit}
+          cycleStatus={cycleStatus}
+          pulsingCell={pulsingCell}
+          user={user}
+          supabase={supabaseRef.current}
+          hoveredCellRef={hoveredCellRef}
+        />
         {/* ------------------------------------------------------------------ */}
+
         {/* Add habit input                                                     */}
         {/* ------------------------------------------------------------------ */}
-        <div
-          style={{
-            marginTop: 28,
-            animation: "fadeUp 0.45s 0.36s ease both",
-            opacity: 0,
-            animationFillMode: "forwards",
-          }}
-        >
-          <div className={`add-wrap${inputFocused ? " focused" : ""}`}>
-            <input
-              className="add-input"
-              placeholder="Cultivate a new habit..."
-              value={newHabit}
-              maxLength={MAX_HABIT_NAME_LENGTH}
-              onChange={(e) => setHabitNameWithLimit(e.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onKeyDown={(e) => { if (e.key === "Enter") addHabit(); }}
-            />
-            <input
-              className="add-input add-input-cat"
-              placeholder="Category (optional)"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onKeyDown={(e) => { if (e.key === "Enter") addHabit(); }}
-            />
-            <button className="add-btn" onClick={addHabit} title="Add habit" style={{ marginLeft: 8 }}>
-              <Plus size={16} color="#0a0a0a" strokeWidth={2.5} />
-            </button>
-          </div>
-
-          {showHabitNameCounter && (
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 8, paddingLeft: 20 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.08em",
-                    color: habitNameCount === MAX_HABIT_NAME_LENGTH ? "var(--accent)" : "var(--text-muted)",
-                    fontFamily: "var(--font-mono), monospace",
-                  }}
-                >
-                  {habitNameCount}/{MAX_HABIT_NAME_LENGTH}
-                </span>
-              </div>
-              <div style={{ width: isMobile ? 140 : 170, flexShrink: 0 }} aria-hidden="true" />
-              <div style={{ width: 46, flexShrink: 0 }} aria-hidden="true" />
-            </div>
-          )}
-        </div>
+        <HabitComposer isMobile={isMobile} onAdd={insertHabit} />
       </div>
 
       {/* -------------------------------------------------------------------- */}
@@ -1351,7 +957,9 @@ export default function HabitTracker() {
       {/* -------------------------------------------------------------------- */}
       <DeleteCategoryModal
         categoryToDelete={categoryToDelete}
-        habitCount={categoryToDelete ? (groupedHabits[categoryToDelete]?.length ?? 0) : 0}
+        habitCount={
+          categoryToDelete ? (groupedHabits[categoryToDelete]?.length ?? 0) : 0
+        }
         onCancel={() => setCategoryToDelete(null)}
         onConfirm={executeDeleteCategory}
       />

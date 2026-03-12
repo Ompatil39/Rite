@@ -430,7 +430,8 @@ export default function HabitTracker() {
         :root.light .habit-card { background: #ffffff !important; border-color: var(--border-main) !important; box-shadow: 0 0.25rem 1rem rgba(0,0,0,0.03) !important; }
         :root.light .habit-card:hover { border-color: var(--border-focus) !important; box-shadow: 0 0.5rem 1.875rem rgba(0,0,0,0.06) !important; }
         :root.light .habit-name { color: #1a1a18 !important; }
-        :root.light .add-wrap { background: #ffffff !important; border-color: var(--border-main) !important; box-shadow: 0 0.25rem 1rem rgba(0,0,0,0.03) !important; }
+        :root.light .add-wrap { background: transparent !important; border-color: rgba(201,162,39,0.3) !important; box-shadow: none !important; }
+        :root.light .add-wrap:hover { border-color: rgba(201,162,39,0.6) !important; }
         :root.light .add-input { color: #1a1a18 !important; }
         :root.light .add-input::placeholder { color: #888 !important; }
         :root.light .add-input-cat { border-left-color: var(--border-main) !important; }
@@ -562,13 +563,14 @@ export default function HabitTracker() {
 
         .add-wrap {
           display: flex; align-items: center;
-          background: #121212; border: 1px solid #222;
+          background: transparent; border: 1.5px dashed #3a3a2a;
           border-radius: 62.4375rem;
           padding: 0.375rem 0.375rem 0.375rem 1.25rem;
-          transition: border-color 0.2s, box-shadow 0.2s;
+          transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
           max-width: 35rem;
         }
-        .add-wrap.focused { border-color: var(--accent); }
+        .add-wrap:hover { border-color: rgba(201,162,39,0.45); }
+        .add-wrap.focused { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(201,162,39,0.08); }
         .add-input {
           background: transparent; border: none;
           color: var(--text-main); font-size: 0.875rem;
@@ -582,13 +584,15 @@ export default function HabitTracker() {
           padding-left: 1rem; margin-left: 0.5rem;
         }
         .add-btn {
-          width: 2.375rem; height: 2.375rem; border-radius: 50%;
+          width: 2.125rem; height: 2.125rem; border-radius: 50%;
           background: var(--accent); border: none; cursor: pointer;
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 0.625rem 1.375rem rgba(0,0,0,0.35), inset 0 0.0625rem 0 rgba(255,255,255,0.28);
-          transition: box-shadow 0.15s, transform 0.12s; flex-shrink: 0;
+          box-shadow: none;
+          transition: background 0.15s, transform 0.12s, opacity 0.15s; flex-shrink: 0;
+          opacity: 0.92;
         }
-        .add-btn:active { transform: scale(0.98); box-shadow: 0 0.375rem 0.875rem rgba(0,0,0,0.32), inset 0 0.0625rem 0 rgba(255,255,255,0.18); }
+        .add-btn:hover { opacity: 1; transform: scale(1.06); }
+        .add-btn:active { transform: scale(0.96); opacity: 0.85; }
 
         .tooltip {
           position: absolute; bottom: 100%; left: 50%;
@@ -1080,12 +1084,12 @@ export default function HabitTracker() {
                                                                 display: "flex",
                                                                 alignItems: "center",
                                                                 gap: 5,
-                                                                fontSize: 11,
+                                                                fontSize: 12,
                                                                 color: streak > 0 ? "#999" : "#555",
                                                                 fontFamily: "var(--font-mono), monospace",
                                                               }}
                                                             >
-                                                              <IconFire size={12} color={streak > 0 ? "var(--accent)" : "currentColor"} />
+                                                              <IconFire size={14} color={streak > 0 ? "var(--accent)" : "currentColor"} />
                                                               <span style={{ opacity: streak > 0 ? 1 : 0.7 }}>{streak}d</span>
                                                             </span>
                                                             <span
@@ -1094,12 +1098,12 @@ export default function HabitTracker() {
                                                                 display: "flex",
                                                                 alignItems: "center",
                                                                 gap: 5,
-                                                                fontSize: 11,
+                                                                fontSize: 12,
                                                                 fontFamily: "var(--font-mono), monospace",
                                                                 color: pctColor,
                                                               }}
                                                             >
-                                                              <IconClock size={12} color={pctColor} />
+                                                              <IconClock size={14} color={pctColor} />
                                                               {pct}%
                                                             </span>
                                                           </div>
@@ -1111,14 +1115,14 @@ export default function HabitTracker() {
                                                               onClick={() => setExpandedCalendar(expandedCalendar === habit.id ? null : habit.id)}
                                                               title="View Calendar"
                                                             >
-                                                              <Calendar size={13} color="currentColor" />
+                                                              <Calendar size={15} color="currentColor" />
                                                             </button>
                                                             <button
                                                               className="del-btn"
                                                               onClick={() => removeHabit(habit.id)}
                                                               title="Delete habit"
                                                             >
-                                                              <Trash2 size={13} color="currentColor" />
+                                                              <Trash2 size={15} color="currentColor" />
                                                             </button>
                                                           </div>
                                                         </div>
@@ -1208,12 +1212,12 @@ export default function HabitTracker() {
                                                                     opacity: isFuture ? 0.5 : 1,
                                                                   }}
                                                                   transition={{
-                                                                    height:          { duration: 0.2, ease: "easeOut" },
-                                                                    backgroundColor: { duration: 0.2 },
-                                                                    borderColor:     { duration: 0.2 },
-                                                                    scale:           { type: "spring", stiffness: 400, damping: 15 },
-                                                                    filter:          { duration: 0.2 },
-                                                                    boxShadow:       { duration: 0.2 },
+                                                                    height:          { duration: 0.25, ease: [0.16, 1, 0.3, 1] },
+                                                                    backgroundColor: { duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+                                                                    borderColor:     { duration: 0.35, ease: [0.16, 1, 0.3, 1] },
+                                                                    scale:           { type: "spring", stiffness: 280, damping: 22 },
+                                                                    filter:          { duration: 0.3, ease: "easeOut" },
+                                                                    boxShadow:       { duration: 0.3 },
                                                                   }}
                                                                   style={{
                                                                     width: PILL_W,
@@ -1230,8 +1234,8 @@ export default function HabitTracker() {
                                                                   {status !== STATUS.NONE && status !== STATUS.MISSED && !isFuture && (
                                                                     <motion.div
                                                                       initial={false}
-                                                                      animate={{ height: status === STATUS.DONE ? "100%" : "50%" }}
-                                                                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                                                      animate={{ height: status === STATUS.DONE ? "100%" : "100%" }}
+                                                                      transition={{ type: "spring", stiffness: 180, damping: 22 }}
                                                                       style={{
                                                                         position: "absolute",
                                                                         bottom: 0, left: 0, right: 0,
@@ -1317,7 +1321,7 @@ export default function HabitTracker() {
               onKeyDown={(e) => { if (e.key === "Enter") addHabit(); }}
             />
             <button className="add-btn" onClick={addHabit} title="Add habit" style={{ marginLeft: 8 }}>
-              <Plus size={18} color="#0a0a0a" />
+              <Plus size={16} color="#0a0a0a" strokeWidth={2.5} />
             </button>
           </div>
 

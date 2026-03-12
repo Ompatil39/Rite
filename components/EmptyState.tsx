@@ -72,14 +72,20 @@ export default function EmptyState({
         .es-add-wrap {
           display: flex;
           align-items: center;
-          background: #121212;
-          border: 1px solid #222;
+          background: transparent;
+          border: 1.5px dashed #3a3a2a;
           border-radius: 999px;
           padding: 6px 6px 6px 20px;
-          transition: border-color 0.2s, box-shadow 0.2s;
+          transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
           width: 100%;
         }
-        .es-add-wrap.focused { border-color: var(--accent); }
+        .es-add-wrap:hover {
+          border-color: rgba(201,162,39,0.45);
+        }
+        .es-add-wrap.focused {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px rgba(201,162,39,0.08);
+        }
 
         .es-add-input {
           background: transparent;
@@ -102,22 +108,22 @@ export default function EmptyState({
         }
 
         .es-add-btn {
-          width: 38px; height: 38px;
+          width: 34px; height: 34px;
           border-radius: 50%;
           background: var(--accent);
           border: none;
           cursor: pointer;
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 10px 22px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.28);
-          transition: box-shadow 0.15s, transform 0.12s;
+          box-shadow: none;
+          transition: opacity 0.15s, transform 0.12s;
           flex-shrink: 0;
+          opacity: 0.92;
         }
-        .es-add-btn:active {
-          transform: scale(0.98);
-          box-shadow: 0 6px 14px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.18);
-        }
+        .es-add-btn:hover  { opacity: 1; transform: scale(1.06); }
+        .es-add-btn:active { transform: scale(0.96); opacity: 0.85; }
 
-        :root.light .es-add-wrap   { background: #ffffff; border-color: var(--border-main); }
+        :root.light .es-add-wrap { background: transparent !important; border-color: rgba(201,162,39,0.3) !important; box-shadow: none !important; }
+        :root.light .es-add-wrap:hover { border-color: rgba(201,162,39,0.6) !important; }
         :root.light .es-add-input  { color: #1a1a18; }
         :root.light .es-add-input::placeholder { color: #888; }
         :root.light .es-add-input-cat { border-left-color: var(--border-main); }
@@ -202,7 +208,7 @@ export default function EmptyState({
               onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
             />
             <button className="es-add-btn" onClick={onAdd} title="Add habit" style={{ marginLeft: 8 }}>
-              <Plus size={18} color="#0a0a0a" />
+              <Plus size={16} color="#0a0a0a" strokeWidth={2.5} />
             </button>
           </div>
 

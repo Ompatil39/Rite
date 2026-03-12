@@ -67,7 +67,10 @@ export default function HabitTracker() {
 
   const hoveredCellRef = useRef<{ hid: string; idx: number } | null>(null);
   const cycleRef = useRef<any>(null);
-  const supabaseRef = useRef(createClient());
+  const supabaseRef    = useRef(createClient());
+  const habitsCacheRef = useRef<Map<string, Habit[]>>(new Map());
+  const activeHabitsKeyRef = useRef<string | null>(null);
+  const viewKeyRef = useRef<string | null>(null);
 
   const dim = getDaysInMonth(month, year);
   const dayNums = Array.from({ length: dim }, (_, i) => i + 1);
@@ -162,15 +165,29 @@ export default function HabitTracker() {
     async (userId: string, m: number, y: number) => {
       const supabase = supabaseRef.current;
       const daysInMonth = getDaysInMonth(m, y);
+      const cacheKey = `${userId}:${y}-${m}`;
+      const cached = habitsCacheRef.current.get(cacheKey);
+      if (cached) {
+        if (viewKeyRef.current === cacheKey) {
+          setHabits(cached);
+          activeHabitsKeyRef.current = cacheKey;
+        }
+        return;
+      }
 
       const { data: habitsData } = await supabase
         .from("habits")
-        .select("*")
+        .select("id, name, category, sort_order")
         .eq("user_id", userId)
         .order("sort_order", { ascending: true });
 
       if (!habitsData || habitsData.length === 0) {
-        setHabits([]);
+        const empty: Habit[] = [];
+        habitsCacheRef.current.set(cacheKey, empty);
+        if (viewKeyRef.current === cacheKey) {
+          setHabits(empty);
+          activeHabitsKeyRef.current = cacheKey;
+        }
         return;
       }
 
@@ -180,7 +197,7 @@ export default function HabitTracker() {
 
       const { data: logsData } = await supabase
         .from("habit_logs")
-        .select("*")
+        .select("habit_id, date, status")
         .in("habit_id", habitIds)
         .gte("date", startDate)
         .lte("date", endDate);
@@ -206,15 +223,29 @@ export default function HabitTracker() {
         };
       });
 
-      setHabits(assembled);
+      habitsCacheRef.current.set(cacheKey, assembled);
+      if (viewKeyRef.current === cacheKey) {
+        setHabits(assembled);
+        activeHabitsKeyRef.current = cacheKey;
+      }
     },
-    [],
+    []
   );
-
   // Re-load on month/year change
   useEffect(() => {
-    if (user) loadHabitsFromDB(user.id, month, year);
+    if (user) {
+      const key = `${user.id}:${year}-${month}`;
+      viewKeyRef.current = key;
+      loadHabitsFromDB(user.id, month, year);
+    }
   }, [month, year, user, loadHabitsFromDB]);
+
+  // Keep cache in sync with the currently displayed month
+  useEffect(() => {
+    const key = activeHabitsKeyRef.current;
+    if (!user || !key) return;
+    habitsCacheRef.current.set(key, habits);
+  }, [habits, user]);
 
   // -------------------------------------------------------------------------
   // Mount / auth
@@ -257,6 +288,9 @@ export default function HabitTracker() {
         } else {
           setUser(null);
           setHabits([]);
+          habitsCacheRef.current.clear();
+          activeHabitsKeyRef.current = null;
+          viewKeyRef.current = null;
         }
       },
     );
@@ -966,3 +1000,18 @@ export default function HabitTracker() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

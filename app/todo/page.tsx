@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash2, Check, Circle, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { Trash2, Check, Circle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import TodoComposer from "@/components/TodoComposer";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -13,26 +14,73 @@ type Todo = {
   sort_order: number;
 };
 
+type TodoRowProps = {
+  todo: Todo;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+};
+
+const TodoRow = memo(function TodoRow({ todo, onToggle, onDelete }: TodoRowProps) {
+  return (
+    <motion.div
+      className="todo-row"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      style={{
+        willChange: "transform, opacity",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-focus)")}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-main)")}
+    >
+      <button type="button" className="todo-row-main" onClick={() => onToggle(todo.id)}>
+        <div
+          className="todo-checkbox"
+          style={{ color: todo.completed ? "#4ade80" : "var(--text-muted)", transition: "color 0.2s" }}
+        >
+          {todo.completed ? <Check size={20} /> : <Circle size={20} />}
+        </div>
+        <div
+          className="todo-text"
+          style={{
+            fontSize: 15,
+            color: todo.completed ? "var(--text-muted)" : "var(--text-main)",
+            textDecoration: todo.completed ? "line-through" : "none",
+            transition: "color 0.2s",
+          }}
+        >
+          {todo.text}
+        </div>
+      </button>
+      <button
+        type="button"
+        className="todo-delete"
+        onClick={() => onDelete(todo.id)}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+      >
+        <Trash2 size={16} />
+      </button>
+    </motion.div>
+  );
+});
+
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [newTodo, setNewTodo] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const supabaseRef = useRef(createClient());
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const todosRef = useRef<Todo[]>([]);
 
-  const syncComposerHeight = (element: HTMLTextAreaElement | null) => {
-    if (!element) return;
+  useEffect(() => {
+    todosRef.current = todos;
+  }, [todos]);
 
-    element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
-  };
-
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Load todos from Supabase ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+  // Load todos from Supabase
   const loadTodos = useCallback(async (userId: string) => {
     const { data } = await supabaseRef.current
       .from("todos")
-      .select("*")
+      .select("id, text, completed, sort_order")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
@@ -49,7 +97,7 @@ export default function TodoList() {
     setLoading(false);
   }, []);
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Auth + initial load ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+  // Auth + initial load
   useEffect(() => {
     const supabase = supabaseRef.current;
 
@@ -78,19 +126,20 @@ export default function TodoList() {
     return () => listener.subscription.unsubscribe();
   }, [loadTodos]);
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Add todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-  const addTodo = async () => {
-    if (!newTodo.trim()) return;
-    const text = newTodo.trim();
+  // Add todo
+  const addTodo = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const sortOrder = todosRef.current.length;
 
     if (user) {
       const { data, error } = await supabaseRef.current
         .from("todos")
         .insert({
           user_id: user.id,
-          text,
+          text: trimmed,
           completed: false,
-          sort_order: todos.length,
+          sort_order: sortOrder,
         })
         .select()
         .single();
@@ -104,40 +153,37 @@ export default function TodoList() {
     } else {
       // Anonymous fallback
       setTodos((prev) => [
-        { id: crypto.randomUUID(), text, completed: false, sort_order: prev.length },
+        { id: crypto.randomUUID(), text: trimmed, completed: false, sort_order: prev.length },
         ...prev,
       ]);
     }
-    setNewTodo("");
-  };
+  }, [user]);
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Toggle todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-  const toggleTodo = async (id: string) => {
+  // Toggle todo
+  const toggleTodo = useCallback(async (id: string) => {
+    let nextCompleted: boolean | null = null;
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, completed: !t.completed } : t))
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        nextCompleted = !t.completed;
+        return { ...t, completed: nextCompleted };
+      })
     );
-    if (user) {
-      const todo = todos.find((t) => t.id === id);
-      if (todo) {
-        await supabaseRef.current
-          .from("todos")
-          .update({ completed: !todo.completed })
-          .eq("id", id);
-      }
+    if (user && nextCompleted !== null) {
+      await supabaseRef.current
+        .from("todos")
+        .update({ completed: nextCompleted })
+        .eq("id", id);
     }
-  };
+  }, [user]);
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Delete todo ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-  const deleteTodo = async (id: string) => {
+  // Delete todo
+  const deleteTodo = useCallback(async (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
     if (user) {
       await supabaseRef.current.from("todos").delete().eq("id", id);
     }
-  };
-
-  useEffect(() => {
-    syncComposerHeight(composerRef.current);
-  }, [newTodo]);
+  }, [user]);
 
   return (
     <div className="page-enter todo-page" style={{ maxWidth: 800, margin: "0 auto", padding: "0px 36px 88px", fontFamily: "var(--font-body), sans-serif" }}>
@@ -206,48 +252,8 @@ export default function TodoList() {
           .todo-row { padding: 14px 14px !important; }
         }
       `}</style>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 24, padding: "6px 6px 6px 20px", marginBottom: 32 }}>
-        <textarea
-          ref={composerRef}
-          value={newTodo}
-          rows={1}
-          onChange={e => {
-            setNewTodo(e.target.value);
-            syncComposerHeight(e.currentTarget);
-          }}
-          onKeyDown={e => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              addTodo();
-            }
-          }}
-          placeholder="What needs to be done?"
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--text-main)",
-            fontSize: 14,
-            outline: "none",
-            flex: 1,
-            minWidth: 0,
-            resize: "none",
-            overflow: "hidden",
-            minHeight: 38,
-            maxHeight: 120,
-            lineHeight: 1.4,
-            padding: "10px 0 8px",
-            fontFamily: "var(--font-body), sans-serif",
-          }}
-        />
-        <button
-          onClick={addTodo}
-          style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--accent)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--bg-base)", transition: "transform 0.15s" }}
-          onMouseEnter={e => e.currentTarget.style.transform = "scale(1.07)"}
-          onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
-        >
-          <Plus size={18} />
-        </button>
-      </div>
+
+      <TodoComposer onAdd={addTodo} />
 
       {/* Loading state */}
       {loading && (
@@ -264,57 +270,13 @@ export default function TodoList() {
       {!loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <AnimatePresence>
-            {todos.map(todo => (
-              <motion.div
-                key={todo.id}
-                className="todo-row"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                style={{
-                  willChange: "transform, opacity",
-                }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = "var(--border-focus)"}
-                onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border-main)"}
-              >
-                <button
-                  type="button"
-                  className="todo-row-main"
-                  onClick={() => toggleTodo(todo.id)}
-                >
-                  <div
-                    className="todo-checkbox"
-                    style={{ color: todo.completed ? "#4ade80" : "var(--text-muted)", transition: "color 0.2s" }}
-                  >
-                    {todo.completed ? <Check size={20} /> : <Circle size={20} />}
-                  </div>
-                  <div
-                    className="todo-text"
-                    style={{
-                      fontSize: 15,
-                      color: todo.completed ? "var(--text-muted)" : "var(--text-main)",
-                      textDecoration: todo.completed ? "line-through" : "none",
-                      transition: "color 0.2s",
-                    }}
-                  >
-                    {todo.text}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  className="todo-delete"
-                  onClick={() => deleteTodo(todo.id)}
-                  onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
-                  onMouseLeave={e => e.currentTarget.style.color = "var(--text-muted)"}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </motion.div>
+            {todos.map((todo) => (
+              <TodoRow key={todo.id} todo={todo} onToggle={toggleTodo} onDelete={deleteTodo} />
             ))}
           </AnimatePresence>
-          
+
           {todos.length === 0 && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
@@ -334,4 +296,3 @@ export default function TodoList() {
     </div>
   );
 }
-

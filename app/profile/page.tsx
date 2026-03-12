@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { LogOut, User, Activity, Flame, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { createClient } from "@/utils/supabase/client";
+
+type StatsPayload = {
+  totalHabits: number;
+  longestStreak: number;
+  completionRate: number;
+};
 
 export default function ProfileDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -17,25 +23,75 @@ export default function ProfileDashboard() {
     loading: true,
   });
 
-  const fetchStats = async () => {
+  const statsCacheRef = useRef<{ userId: string; data: StatsPayload; ts: number } | null>(null);
+  const STATS_CACHE_KEY = "rite.profile.stats";
+  const STATS_CACHE_TTL = 60_000;
+
+  const readStatsCache = useCallback((userId: string): StatsPayload | null => {
+    const now = Date.now();
+    const memory = statsCacheRef.current;
+    if (memory && memory.userId === userId && now - memory.ts < STATS_CACHE_TTL) {
+      return memory.data;
+    }
+
+    if (typeof window === "undefined") return null;
+    const raw = sessionStorage.getItem(STATS_CACHE_KEY);
+    if (!raw) return null;
+
+    try {
+      const parsed = JSON.parse(raw) as { userId: string; data: StatsPayload; ts: number };
+      if (parsed.userId === userId && now - parsed.ts < STATS_CACHE_TTL) {
+        statsCacheRef.current = parsed;
+        return parsed.data;
+      }
+    } catch (_err) {
+      return null;
+    }
+
+    return null;
+  }, []);
+
+  const writeStatsCache = useCallback((userId: string, data: StatsPayload) => {
+    const payload = { userId, data, ts: Date.now() };
+    statsCacheRef.current = payload;
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(STATS_CACHE_KEY, JSON.stringify(payload));
+    }
+  }, []);
+
+  const clearStatsCache = useCallback(() => {
+    statsCacheRef.current = null;
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(STATS_CACHE_KEY);
+    }
+  }, []);
+
+  const fetchStats = useCallback(async (userId: string) => {
+    const cached = readStatsCache(userId);
+    if (cached) {
+      setStats({ ...cached, loading: false });
+      return;
+    }
+
     try {
       setStats((prev) => ({ ...prev, loading: true }));
       const res = await fetch("/api/profile/stats", { cache: "no-store" });
       if (!res.ok) throw new Error("Failed to load stats");
       const data = await res.json();
 
-      setStats({
+      const payload: StatsPayload = {
         totalHabits: data.totalHabits ?? 0,
         longestStreak: data.longestStreak ?? 0,
         completionRate: data.completionRate ?? 0,
-        loading: false,
-      });
+      };
+
+      writeStatsCache(userId, payload);
+      setStats({ ...payload, loading: false });
     } catch (err) {
       console.error("Error fetching stats:", err);
       setStats((prev) => ({ ...prev, loading: false }));
     }
-  };
-
+  }, [readStatsCache, writeStatsCache]);
   useEffect(() => {
     const supabase = createClient();
 
@@ -46,7 +102,7 @@ export default function ProfileDashboard() {
       if (session?.user) {
         setIsLoggedIn(true);
         setUser(session.user);
-        fetchStats();
+        fetchStats(session.user.id);
       }
     };
     checkSession();
@@ -56,7 +112,7 @@ export default function ProfileDashboard() {
         if (session?.user) {
           setIsLoggedIn(true);
           setUser(session.user);
-          fetchStats();
+          fetchStats(session.user.id);
           if (event === "SIGNED_IN") {
             setShowConfirmation(true);
             setTimeout(() => setShowConfirmation(false), 4000);
@@ -64,6 +120,7 @@ export default function ProfileDashboard() {
         } else {
           setIsLoggedIn(false);
           setUser(null);
+          clearStatsCache();
           setStats({
             totalHabits: 0,
             longestStreak: 0,
@@ -77,7 +134,7 @@ export default function ProfileDashboard() {
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchStats, clearStatsCache]);
 
   const handleLogin = async () => {
     const supabase = createClient();
@@ -653,3 +710,8 @@ export default function ProfileDashboard() {
     </div>
   );
 }
+
+
+
+
+

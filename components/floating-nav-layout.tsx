@@ -38,6 +38,7 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen-stable" style={{ display: "flex", flexDirection: "column" }}>
       <style>{`
+        .month-nav-slot-root { display: none; }
         @media (max-width: 768px) {
           .top-left-header { top: 16px !important; left: 16px !important; position: absolute !important; }
           .top-left-header h1 { font-size: 28px !important; }
@@ -46,6 +47,24 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
             bottom: 24px !important;
             width: calc(100% - 32px) !important;
             padding: 8px !important;
+          }
+          #month-nav-slot, .month-nav-slot-root {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 101;
+          }
+          .month-nav-pill-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-main);
+            border-radius: 9999px;
+            padding: 4px 10px;
           }
           .floating-nav.nav-hidden {
             transform: translate(-50%, calc(100% + 32px)) !important;
@@ -73,6 +92,9 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
           Premium Tracking
         </p>
       </div>
+
+      {/* Mobile month nav portal target — hidden on desktop via CSS */}
+      <div id="month-nav-slot" className="month-nav-slot-root" />
 
       {/* Center Floating Nav */}
       <header
@@ -155,4 +177,3 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
     </div>
   );
 }
-

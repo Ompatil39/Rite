@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react";
 import type { DropResult } from "@hello-pangea/dnd";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-import { MONTHS, STATUS, S } from "./constants";
+import { MONTHS, STATUS, S, MOBILE_PILL_W, MOBILE_PILL_H, MOBILE_PILL_H_SM } from "./constants";
 import type { Habit } from "./types";
 import {
   getDaysInMonth,
@@ -41,6 +43,19 @@ const DeleteCategoryModal = dynamic(() => import("./DeleteCategoryModal"), {
 });
 
 // ---------------------------------------------------------------------------
+// MonthNavPortal — renders children into #month-nav-slot only after mount
+// Avoids hydration mismatch: never touches the DOM during SSR
+// ---------------------------------------------------------------------------
+function MonthNavPortal({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<Element | null>(null);
+  useEffect(() => {
+    setSlot(document.getElementById("month-nav-slot"));
+  }, []);
+  if (!slot) return null;
+  return createPortal(children, slot);
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function HabitTracker() {
@@ -72,6 +87,12 @@ export default function HabitTracker() {
   const activeHabitsKeyRef = useRef<string | null>(null);
   const viewKeyRef = useRef<string | null>(null);
 
+  // Mobile-only state --------------------------------------------------------
+  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
+  const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
+  const [sheetDeleteConfirm, setSheetDeleteConfirm] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const dim = getDaysInMonth(month, year);
   const dayNums = Array.from({ length: dim }, (_, i) => i + 1);
   const today = now.getDate();
@@ -95,6 +116,84 @@ export default function HabitTracker() {
     setPulsingCell(key);
     setTimeout(() => setPulsingCell((k) => (k === key ? null : k)), 220);
   };
+
+  // -------------------------------------------------------------------------
+  // Mobile helpers: toast + sheet handlers
+  // -------------------------------------------------------------------------
+  const showToast = useCallback((msg: string, color: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ msg, color });
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000);
+  }, []);
+
+  const onTap = useCallback((habit: Habit) => {
+    setSheetDeleteConfirm(false);
+    setSelectedHabit(habit);
+  }, []);
+
+  const onQuickLog = useCallback((habit: Habit) => {
+    // Cycle today's status for this habit
+    const todayIdx = new Date().getDate() - 1;
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habit.id) return h;
+        const days = [...h.days];
+        const cur = days[todayIdx];
+        const next =
+          cur === STATUS.NONE
+            ? STATUS.DONE
+            : cur === STATUS.DONE
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.MISSED
+                : STATUS.NONE;
+        days[todayIdx] = next;
+        hapticFeedback(next);
+        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
+        if (user) {
+          if (next === STATUS.NONE) {
+            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
+          } else {
+            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: next }, { onConflict: "habit_id,date" }).then();
+          }
+        }
+        showToast(`${habit.name}: ${S[next].label}`, S[next].bg);
+        // Sync selectedHabit if sheet is open for this habit
+        setSelectedHabit((sel) => (sel?.id === habit.id ? { ...h, days } : sel));
+        return { ...h, days };
+      }),
+    );
+  }, [month, year, user, showToast]);
+
+  // ── Mobile: log a specific status from bottom sheet ──────────────────────
+  const logStatusFromSheet = useCallback((habit: Habit, nextStatus: number) => {
+    const todayIdx = new Date().getDate() - 1;
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habit.id) return h;
+        const days = [...h.days];
+        days[todayIdx] = nextStatus;
+        hapticFeedback(nextStatus);
+        if (user) {
+          if (nextStatus === STATUS.NONE) {
+            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
+          } else {
+            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: nextStatus }, { onConflict: "habit_id,date" }).then();
+          }
+        }
+        return { ...h, days };
+      }),
+    );
+    setSelectedHabit((sel) => {
+      if (!sel || sel.id !== habit.id) return sel;
+      const days = [...sel.days];
+      days[todayIdx] = nextStatus;
+      return { ...sel, days };
+    });
+    showToast(`${habit.name}: ${S[nextStatus].label}`, S[nextStatus].bg);
+    setTimeout(() => setSelectedHabit(null), 380);
+  }, [month, year, user, showToast]);
 
   // -------------------------------------------------------------------------
   // Cycle cell status
@@ -349,7 +448,10 @@ export default function HabitTracker() {
       if (!name) return;
       const category = rawCategory.trim() || "Uncategorized";
 
-      const tempId: string = `temp-${crypto.randomUUID()}`;
+      const tempId: string =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? `temp-${crypto.randomUUID()}`
+          : `temp-${Math.random().toString(36).slice(2)}`;
       const sortOrder = habits.length;
       const optimistic: Habit = {
         id: tempId,
@@ -614,9 +716,27 @@ export default function HabitTracker() {
           .habit-track-wrap { width: 100% !important; overflow-x: auto !important; }
           .habit-card { padding: 0.75rem !important; }
           .legend-container { justify-content: center !important; flex-wrap: wrap; }
-          .add-wrap { width: 100%; padding-left: 0.875rem; }
+          .add-wrap { width: 100%; padding-left: 0.875rem; position: relative; }
           .add-input-cat { width: 8.75rem; }
           .month-nav-container { padding: 0.5rem 0.75rem !important; }
+          /* Hide the long "Cultivate a new habit" placeholder on mobile */
+          .add-input:not(.add-input-cat)::placeholder { color: transparent !important; }
+          /* Show short text via ::before on the wrapper when input is empty */
+          .add-wrap::before {
+            content: 'New habit…';
+            position: absolute;
+            left: 0.875rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            opacity: 0.5;
+            pointer-events: none;
+            font-family: var(--font-body), sans-serif;
+          }
+          /* Hide the pseudo-element once the input has a value or is focused */
+          .add-wrap.focused::before,
+          .add-wrap:focus-within::before { display: none; }
         }
 
         @keyframes fadeUp  { from { opacity:0; transform:translateY(1rem) } to { opacity:1; transform:translateY(0) } }
@@ -797,6 +917,77 @@ export default function HabitTracker() {
   // -------------------------------------------------------------------------
   // Main render
   // -------------------------------------------------------------------------
+
+  // ── Month nav element (shared between portal and inline) ──────────────────
+  const monthNavEl = (
+    <div
+      className="month-nav-pill-wrap"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border-main)",
+        borderRadius: 9999,
+        padding: "4px 10px",
+      }}
+    >
+      <button
+        className="nav-btn"
+        onClick={prevMonth}
+        style={{ width: 24, height: 24, borderRadius: 9999 }}
+      >
+        <ChevronLeft size={12} />
+      </button>
+      <span
+        style={{
+          fontFamily: "var(--font-mono), monospace",
+          fontSize: 10,
+          color: "var(--text-muted)",
+          letterSpacing: "0.1em",
+          minWidth: 80,
+          textAlign: "center",
+          fontWeight: 600,
+        }}
+      >
+        {MONTHS[month].toUpperCase()} {year}
+      </span>
+      <button
+        className="nav-btn"
+        onClick={nextMonth}
+        style={{ width: 24, height: 24, borderRadius: 9999 }}
+      >
+        <ChevronRight size={12} />
+      </button>
+    </div>
+  );
+
+  // ── Bottom sheet data for currently selected habit ────────────────────────
+  const sheetHabit = selectedHabit
+    ? habits.find((h) => h.id === selectedHabit.id) ?? selectedHabit
+    : null;
+  const sheetTodayIdx = today - 1;
+  const sheetTodayStatus = sheetHabit ? sheetHabit.days[sheetTodayIdx] : STATUS.NONE;
+  const sheetStreak = sheetHabit ? (habitStats[sheetHabit.id]?.streak ?? 0) : 0;
+  const sheetPct = sheetHabit ? (habitStats[sheetHabit.id]?.pct ?? 0) : 0;
+  const sheetDateLabel = `${["SUN","MON","TUE","WED","THU","FRI","SAT"][new Date(year, month, today).getDay()]} ${String(today).padStart(2,"0")} ${MONTHS[month].substring(0,3).toUpperCase()}`;
+
+  // Build week for sheet
+  const sheetWeek = (() => {
+    const days: { d: number; letter: string; isToday: boolean; isFuture: boolean }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(year, month, today - i);
+      const inMonth = date.getMonth() === month;
+      days.push({
+        d: inMonth ? date.getDate() : -1,
+        letter: ["S","M","T","W","T","F","S"][date.getDay()],
+        isToday: i === 0,
+        isFuture: false,
+      });
+    }
+    return days;
+  })();
+
   return (
     <div
       style={{
@@ -815,132 +1006,96 @@ export default function HabitTracker() {
         {/* ------------------------------------------------------------------ */}
         {/* Top bar: month navigator + mobile view toggle                       */}
         {/* ------------------------------------------------------------------ */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: isMobile ? "center" : "flex-end",
-            alignItems: "center",
-            marginBottom: 32,
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
+        {/* On mobile, the month nav is portalled into the floating-nav header  */}
+        {!isMobile && (
           <div
-            className="month-nav-container"
             style={{
               display: "flex",
+              justifyContent: "flex-end",
               alignItems: "center",
-              gap: 10,
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-main)",
-              borderRadius: 12,
-              padding: "8px 12px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+              marginBottom: 32,
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
-            <button
-              className="nav-btn"
-              onClick={prevMonth}
-              style={{ width: 28, height: 28 }}
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span
-              className="month-nav-text"
+            <div
+              className="month-nav-container"
               style={{
-                fontFamily: "var(--font-mono), monospace",
-                fontSize: 11,
-                color: "var(--text-muted)",
-                letterSpacing: "0.1em",
-                minWidth: 100,
-                textAlign: "center",
-                fontWeight: 600,
-              }}
-            >
-              {MONTHS[month].toUpperCase()} {year}
-            </span>
-            <button
-              className="nav-btn"
-              onClick={nextMonth}
-              style={{ width: 28, height: 28 }}
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-
-          {isMobile && (
-            <button
-              onClick={() => setIsMonthView(!isMonthView)}
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-main)",
-                color: "var(--accent)",
-                padding: "8px 14px",
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "var(--font-mono), monospace",
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                transition: "all 0.2s",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
+                gap: 10,
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-main)",
+                borderRadius: 12,
+                padding: "8px 12px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
               }}
             >
-              {isMonthView ? (
-                <>
-                  <ChevronRight size={14} /> Weekly
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={14} /> Monthly
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* Legend                                                              */}
-        {/* ------------------------------------------------------------------ */}
-        <div
-          className="legend-container"
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 24,
-            marginBottom: 20,
-          }}
-        >
-          {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => (
-            <div
-              key={s}
-              style={{ display: "flex", alignItems: "center", gap: 7 }}
-            >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: S[s].bg,
-                  boxShadow: S[s].glow,
-                }}
-              />
+              <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}>
+                <ChevronLeft size={14} />
+              </button>
               <span
+                className="month-nav-text"
                 style={{
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  letterSpacing: "0.14em",
                   fontFamily: "var(--font-mono), monospace",
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  letterSpacing: "0.1em",
+                  minWidth: 100,
+                  textAlign: "center",
+                  fontWeight: 600,
                 }}
               >
-                {S[s].label.toUpperCase()}
+                {MONTHS[month].toUpperCase()} {year}
               </span>
+              <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}>
+                <ChevronRight size={14} />
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {/* Mobile: portal month nav into floating-nav slot */}
+        {isMobile && mounted && <MonthNavPortal>{monthNavEl}</MonthNavPortal>}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Legend (desktop only — mobile legend is in HabitGrid)               */}
+        {/* ------------------------------------------------------------------ */}
+        {!isMobile && (
+          <div
+            className="legend-container"
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 24,
+              marginBottom: 20,
+            }}
+          >
+            {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => (
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: S[s].bg,
+                    boxShadow: S[s].glow,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-muted)",
+                    letterSpacing: "0.14em",
+                    fontFamily: "var(--font-mono), monospace",
+                  }}
+                >
+                  {S[s].label.toUpperCase()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ------------------------------------------------------------------ */}
         {/* Scrollable grid                                                     */}
@@ -978,40 +1133,345 @@ export default function HabitTracker() {
           user={user}
           supabase={supabaseRef.current}
           hoveredCellRef={hoveredCellRef}
+          onTap={onTap}
+          onQuickLog={onQuickLog}
         />
-        {/* ------------------------------------------------------------------ */}
 
-        {/* Add habit input                                                     */}
-        {/* ------------------------------------------------------------------ */}
-        <HabitComposer isMobile={isMobile} onAdd={insertHabit} />
+        {/* Add habit input */}
+        <div style={{ position: "relative" }}>
+          <HabitComposer isMobile={isMobile} onAdd={insertHabit} />
+        </div>
       </div>
 
-      {/* -------------------------------------------------------------------- */}
-      {/* Delete category confirmation modal                                   */}
-      {/* -------------------------------------------------------------------- */}
+      {/* Delete category modal */}
       <DeleteCategoryModal
         categoryToDelete={categoryToDelete}
-        habitCount={
-          categoryToDelete ? (groupedHabits[categoryToDelete]?.length ?? 0) : 0
-        }
+        habitCount={categoryToDelete ? (groupedHabits[categoryToDelete]?.length ?? 0) : 0}
         onCancel={() => setCategoryToDelete(null)}
         onConfirm={executeDeleteCategory}
       />
+
+      {/* -------------------------------------------------------------------- */}
+      {/* Mobile: Log Bottom Sheet — single instance at root                   */}
+      {/* -------------------------------------------------------------------- */}
+      {isMobile && (
+        <>
+          {/* Backdrop blur — separate div, not on sheet itself */}
+          {sheetHabit && (
+            <div
+              onClick={() => setSelectedHabit(null)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 200,
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                background: "rgba(0,0,0,0.45)",
+              }}
+            />
+          )}
+
+          {/* Sheet */}
+          <div
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 201,
+              background: "var(--bg-surface, #161616)",
+              border: "1px solid var(--border-main)",
+              borderRadius: "20px 20px 0 0",
+              padding: "12px 20px 40px",
+              transform: sheetHabit ? "translateY(0)" : "translateY(110%)",
+              transition: sheetHabit
+                ? "transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1)"
+                : "transform 0.3s ease-in",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+            }}
+          >
+            {sheetHabit && (
+              <>
+                {/* Handle bar */}
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+                  <div style={{ width: 32, height: 3, borderRadius: 9999, background: "var(--border-focus, #333)" }} />
+                </div>
+
+                {/* Habit info row */}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", letterSpacing: "0.15em", marginBottom: 4 }}>
+                      HABIT
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {sheetHabit.name}
+                    </div>
+                  </div>
+                  {/* Streak + rate chips */}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 12 }}>
+                    {sheetStreak > 0 && (
+                      <span style={{
+                        fontSize: 10, fontFamily: "var(--font-mono), monospace",
+                        color: "var(--accent)", background: "rgba(201,162,39,0.1)",
+                        padding: "3px 8px", borderRadius: 9999,
+                        border: "1px solid rgba(201,162,39,0.25)",
+                      }}>
+                        🔥 {sheetStreak}d
+                      </span>
+                    )}
+                    <span style={{
+                      fontSize: 10, fontFamily: "var(--font-mono), monospace",
+                      color: "var(--text-muted)", background: "var(--bg-base, #0e0e0e)",
+                      padding: "3px 8px", borderRadius: 9999,
+                      border: "1px solid var(--border-main)",
+                    }}>
+                      {sheetPct}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Today anchor bar */}
+                <div style={{
+                  background: "var(--bg-base, #0e0e0e)",
+                  border: "1px solid var(--border-main)",
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 16,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--accent)", letterSpacing: "0.12em", marginBottom: 3 }}>
+                      TODAY · {sheetDateLabel}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-body), sans-serif" }}>
+                      Select a status to log
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div
+                      style={{
+                        width: MOBILE_PILL_W,
+                        height: MOBILE_PILL_H_SM,
+                        borderRadius: 9999,
+                        background: sheetTodayStatus === STATUS.NONE ? "var(--pill-none, #1c1c1c)" : S[sheetTodayStatus].bg,
+                        border: `1px solid ${S[sheetTodayStatus].border}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ fontSize: 10, fontFamily: "var(--font-mono), monospace", color: S[sheetTodayStatus].border, fontWeight: 600 }}>
+                      {S[sheetTodayStatus].label.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Week mini-view */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 20, justifyContent: "space-between" }}>
+                  {sheetWeek.map((wd, i) => {
+                    const cellStatus = wd.d > 0 ? sheetHabit.days[wd.d - 1] : STATUS.NONE;
+                    const isNone = cellStatus === STATUS.NONE;
+                    return (
+                      <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, opacity: wd.d < 0 ? 0.2 : wd.isToday ? 1 : 0.55, flex: 1 }}>
+                        <span style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: wd.isToday ? "var(--accent)" : "var(--text-muted)" }}>
+                          {wd.letter}
+                        </span>
+                        <div style={{
+                          width: MOBILE_PILL_W,
+                          height: MOBILE_PILL_H_SM,
+                          borderRadius: 9999,
+                          background: isNone ? "var(--pill-none, #1c1c1c)" : S[cellStatus].bg,
+                          border: `1px solid ${wd.isToday ? "var(--accent)" : (isNone ? "var(--pill-none-border, #2a2a2a)" : S[cellStatus].border)}`,
+                          flexShrink: 0,
+                        }} />
+                        <span style={{ fontSize: 8, fontFamily: "var(--font-mono), monospace", color: wd.isToday ? "var(--accent)" : "var(--text-muted)", opacity: wd.isToday ? 1 : 0.5 }}>
+                          {wd.d > 0 ? String(wd.d).padStart(2, "0") : "--"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Status buttons */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => {
+                    const isActive = sheetTodayStatus === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => logStatusFromSheet(sheetHabit, s)}
+                        style={{
+                          flex: 1,
+                          padding: "12px 8px",
+                          borderRadius: 12,
+                          border: `1.5px solid ${S[s].border}`,
+                          background: isActive ? S[s].bg : `${S[s].bg}18`,
+                          color: isActive ? "#000" : S[s].border,
+                          cursor: "pointer",
+                          fontFamily: "var(--font-body), sans-serif",
+                          fontSize: 13,
+                          fontWeight: 600,
+                          transform: isActive ? "scale(1.05)" : "scale(1)",
+                          transition: "all 0.2s",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        {S[s].label}
+                        {isActive && (
+                          <span style={{ fontSize: 8, fontFamily: "var(--font-mono), monospace", opacity: 0.7, letterSpacing: "0.1em" }}>
+                            NOW
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Divider */}
+                <div style={{ height: 1, background: "var(--border-main)", marginBottom: 16 }} />
+
+                {/* Edit + Delete */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setSelectedHabit(null)}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: 10,
+                      border: "1px solid var(--border-main)",
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontFamily: "var(--font-body), sans-serif",
+                    }}
+                  >
+                    Close
+                  </button>
+                  {!sheetDeleteConfirm ? (
+                    <button
+                      onClick={() => setSheetDeleteConfirm(true)}
+                      style={{
+                        flex: 1,
+                        padding: "10px",
+                        borderRadius: 10,
+                        border: "1px solid var(--status-missed, #ef4444)",
+                        background: "transparent",
+                        color: "var(--status-missed, #ef4444)",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontFamily: "var(--font-body), sans-serif",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setSheetDeleteConfirm(false)}
+                        style={{
+                          flex: 1,
+                          padding: "10px",
+                          borderRadius: 10,
+                          border: "1px solid var(--border-main)",
+                          background: "transparent",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontFamily: "var(--font-body), sans-serif",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (sheetHabit) {
+                            removeHabit(sheetHabit.id);
+                            showToast(`Deleted: ${sheetHabit.name}`, "var(--status-missed)");
+                          }
+                          setSelectedHabit(null);
+                          setSheetDeleteConfirm(false);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "10px",
+                          borderRadius: 10,
+                          border: "2px solid var(--status-missed, #ef4444)",
+                          background: "rgba(239,68,68,0.12)",
+                          color: "var(--status-missed, #ef4444)",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: "var(--font-body), sans-serif",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ---------------------------------------------------------------- */}
+          {/* Toast — single instance, above bottom nav                        */}
+          {/* ---------------------------------------------------------------- */}
+          <div
+            style={{
+              position: "fixed",
+              bottom: toast ? 100 : 80,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 300,
+              opacity: toast ? 1 : 0,
+              pointerEvents: "none",
+              transition: "opacity 0.25s, bottom 0.25s cubic-bezier(0.16,1,0.3,1)",
+            }}
+          >
+            {toast && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 9999,
+                  background: "var(--bg-surface, #1c1c1c)",
+                  border: "1px solid var(--border-main)",
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <div
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: toast.color,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "var(--font-body), sans-serif",
+                    color: "var(--text-main)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {toast.msg}
+                </span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

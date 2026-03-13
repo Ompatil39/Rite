@@ -15,6 +15,11 @@ export const S: Record<number, { bg: string; border: string; glow: string; label
 export const PILL_W = 26;
 export const PILL_H = 26;
 export const PILL_GAP = 4;
+
+// Mobile-only pill dimensions (do not use on desktop)
+export const MOBILE_PILL_W = 14;
+export const MOBILE_PILL_H = 24;
+export const MOBILE_PILL_H_SM = 20;
 export const MAX_HABIT_NAME_LENGTH = 50;
 
 export const SUGGESTED_HABITS = [

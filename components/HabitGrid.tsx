@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type MutableRefObject, type MouseEvent } from "react";
+import { useState, memo, useCallback, type MutableRefObject, type MouseEvent } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -16,7 +16,7 @@ import {
   Calendar,
   Trash2,
 } from "lucide-react";
-import { MONTHS, STATUS, S, PILL_W, PILL_H, PILL_GAP } from "./constants";
+import { MONTHS, STATUS, S, PILL_W, PILL_H, PILL_GAP, MOBILE_PILL_W, MOBILE_PILL_H, MOBILE_PILL_H_SM } from "./constants";
 import type { Habit } from "./types";
 import type { User } from "@supabase/supabase-js";
 import type { createClient as createSupabaseClient } from "@/utils/supabase/client";
@@ -36,6 +36,252 @@ const HeatmapCalendar = dynamic(() => import("./HeatmapCalendar"), {
       Loading calendar...
     </div>
   ),
+});
+
+// ---------------------------------------------------------------------------
+// Module-level week constant (not computed in render — performance requirement)
+// ---------------------------------------------------------------------------
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+
+// ---------------------------------------------------------------------------
+// Mobile-only: MobileHabitRow (React.memo per spec)
+// ---------------------------------------------------------------------------
+type MobileHabitRowProps = {
+  habit: Habit;
+  isCurrent: boolean;
+  today: number;
+  month: number;
+  year: number;
+  isFutureMonth: boolean;
+  habitStats: HabitStats;
+  onTap: (habit: Habit) => void;
+  onQuickLog: (habit: Habit) => void;
+};
+
+const MobileHabitRow = memo(function MobileHabitRow({
+  habit,
+  isCurrent,
+  today,
+  month,
+  year,
+  isFutureMonth,
+  habitStats,
+  onTap,
+  onQuickLog,
+}: MobileHabitRowProps) {
+  const { streak = 0, pct = 0 } = habitStats[habit.id] || {};
+  const todayIdx = today - 1;
+  const todayStatus = isCurrent ? habit.days[todayIdx] : STATUS.NONE;
+  const todayStatusInfo = S[todayStatus];
+
+  // Build 7-day window ending today (or last 7 days of visible range)
+  const now = new Date(year, month, isCurrent ? today : new Date(year, month + 1, 0).getDate());
+  const weekDays: { d: number; dayLetter: string; isToday: boolean; isFuture: boolean; status: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - i);
+    if (date.getMonth() !== month || date.getFullYear() !== year) {
+      // Day outside current month — skip by using placeholder
+      weekDays.push({ d: -1, dayLetter: DAY_LETTERS[date.getDay()], isToday: false, isFuture: false, status: STATUS.NONE });
+    } else {
+      const d = date.getDate();
+      const idx = d - 1;
+      const isToday = isCurrent && d === today;
+      const isFuture = isFutureMonth || (isCurrent && d > today);
+      weekDays.push({ d, dayLetter: DAY_LETTERS[date.getDay()], isToday, isFuture, status: habit.days[idx] });
+    }
+  }
+
+  const pctColor =
+    pct >= 80
+      ? "var(--status-done)"
+      : pct >= 50
+        ? "var(--status-partial)"
+        : pct > 0
+          ? "var(--status-missed)"
+          : "var(--text-muted)";
+
+  return (
+    <div
+      className="mobile-habit-card"
+      onClick={() => onTap(habit)}
+      onMouseDown={(e) => {
+        e.currentTarget.style.background = "#1a1a1a";
+        e.currentTarget.style.transform = "scale(0.985)";
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.background = "var(--bg-surface, #121212)";
+        e.currentTarget.style.transform = "scale(1)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--bg-surface, #121212)";
+        e.currentTarget.style.transform = "scale(1)";
+      }}
+      style={{
+        background: "var(--bg-surface, #121212)",
+        border: "1px solid var(--border-main, #1c1c1c)",
+        borderRadius: 14,
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        cursor: "pointer",
+        transition: "background 0.15s, transform 0.12s",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+      }}
+    >
+      {/* Top row: name + Today pill */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span
+          style={{
+            flex: 1,
+            fontSize: 14,
+            fontWeight: 500,
+            color: "var(--text-main)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {habit.name}
+        </span>
+        {/* Today pill */}
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuickLog(habit);
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "4px 10px",
+            borderRadius: 9999,
+            border: `1px solid ${todayStatusInfo.border}`,
+            background: todayStatus === STATUS.NONE ? "transparent" : `${todayStatusInfo.bg}22`,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: todayStatusInfo.bg === "var(--pill-none)" ? "var(--text-muted)" : todayStatusInfo.bg,
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontSize: 10,
+              fontFamily: "var(--font-mono), monospace",
+              color: todayStatus === STATUS.NONE ? "var(--text-muted)" : todayStatusInfo.border,
+              fontWeight: 600,
+              letterSpacing: "0.08em",
+            }}
+          >
+            TODAY
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom row: stats + 7-pill week view */}
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+        {/* Left: streak + pct */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {streak > 0 && (
+            <span
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                fontFamily: "var(--font-mono), monospace",
+                color: "var(--text-muted)",
+              }}
+            >
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", display: "inline-block", flexShrink: 0 }} />
+              {streak}d
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-mono), monospace",
+              color: pctColor,
+            }}
+          >
+            {pct}%
+          </span>
+        </div>
+
+        {/* Right: 7 pill cells */}
+        <div style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
+          {weekDays.map((wd, i) => {
+            if (wd.d === -1) {
+              // Out-of-month placeholder
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div
+                    style={{
+                      width: MOBILE_PILL_W,
+                      height: MOBILE_PILL_H,
+                      borderRadius: 9999,
+                      background: "transparent",
+                      border: "1px solid var(--border-main)",
+                      opacity: 0.2,
+                    }}
+                  />
+                  <span style={{ fontSize: 8, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", opacity: 0.3 }}>
+                    {wd.dayLetter}
+                  </span>
+                </div>
+              );
+            }
+            const cellStatus = wd.status;
+            const statusInfo = S[cellStatus];
+            const isMissed = cellStatus === STATUS.MISSED;
+            const isNone = cellStatus === STATUS.NONE;
+
+            return (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <div
+                  style={{
+                    width: MOBILE_PILL_W,
+                    height: MOBILE_PILL_H,
+                    borderRadius: 9999,
+                    background: isNone ? "var(--pill-none, #1c1c1c)" : isMissed ? "var(--status-missed)" : statusInfo.bg,
+                    border: `1px solid ${wd.isToday ? statusInfo.border : (isNone ? "var(--pill-none-border, #2a2a2a)" : statusInfo.border)}`,
+                    boxShadow: wd.isToday
+                      ? `0 0 8px ${statusInfo.bg === "var(--pill-none)" ? "transparent" : statusInfo.bg}55, 0 0 0 1.5px ${statusInfo.border}`
+                      : "none",
+                    opacity: !wd.isToday && !wd.isFuture ? 0.6 : 1,
+                    flexShrink: 0,
+                    overflow: "hidden",
+                    position: "relative",
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 8,
+                    fontFamily: "var(--font-mono), monospace",
+                    color: wd.isToday ? "var(--accent)" : "var(--text-muted)",
+                    opacity: wd.isToday ? 1 : 0.4,
+                    fontWeight: wd.isToday ? 700 : 400,
+                  }}
+                >
+                  {String(wd.d).padStart(2, "0")}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 });
 
 type HabitStats = Record<string, { streak: number; pct: number }>;
@@ -79,6 +325,9 @@ type HabitGridProps = {
   user: User | null;
   supabase: ReturnType<typeof createSupabaseClient>;
   hoveredCellRef: MutableRefObject<{ hid: string; idx: number } | null>;
+  // Mobile-only props
+  onTap?: (habit: Habit) => void;
+  onQuickLog?: (habit: Habit) => void;
 };
 
 export default function HabitGrid({
@@ -114,11 +363,190 @@ export default function HabitGrid({
   user,
   supabase,
   hoveredCellRef,
+  onTap,
+  onQuickLog,
 }: HabitGridProps) {
   const [heatmapLogs, setHeatmapLogs] = useState<
     Record<string, Record<string, number>>
   >({});
 
+  // ── Mobile render path ────────────────────────────────────────────────────
+  if (isMobile) {
+    const safeOnTap = onTap ?? (() => {});
+    const safeOnQuickLog = onQuickLog ?? (() => {});
+
+    // Day-letter header (7 days aligned to week ending today)
+    const now = new Date(year, month, isCurrent ? today : new Date(year, month + 1, 0).getDate());
+    const weekDayHeaders: { letter: string; isToday: boolean; d: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(now.getDate() - i);
+      const isToday = isCurrent && date.getMonth() === month && date.getDate() === today;
+      weekDayHeaders.push({
+        letter: DAY_LETTERS[date.getDay()],
+        isToday,
+        d: date.getDate(),
+      });
+    }
+
+    return (
+      <>
+        <style>{`
+          .mobile-cat-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 0 8px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+          }
+          .mobile-habit-card { transition: background 0.15s, transform 0.12s; }
+        `}</style>
+
+        {/* Legend row — status color pills only, no TODAY duplicate */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => (
+            <div
+              key={s}
+              style={{
+                width: MOBILE_PILL_W,
+                height: MOBILE_PILL_H / 2,
+                borderRadius: 9999,
+                background: S[s].bg,
+                flexShrink: 0,
+              }}
+            />
+          ))}
+          <span style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", letterSpacing: "0.1em", marginLeft: 4 }}>
+            DONE · PARTIAL · MISSED
+          </span>
+        </div>
+
+        {/* Day column headers — right-aligned, 7 letters over pill columns */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 3, marginBottom: 8 }}>
+          {weekDayHeaders.map((wh, i) => (
+            <div
+              key={i}
+              style={{
+                width: MOBILE_PILL_W,
+                textAlign: "center",
+                fontSize: 10,
+                fontFamily: "var(--font-mono), monospace",
+                color: wh.isToday ? "var(--accent)" : "var(--text-muted)",
+                fontWeight: wh.isToday ? 700 : 400,
+                opacity: wh.isToday ? 1 : 0.4,
+                flexShrink: 0,
+              }}
+            >
+              {wh.letter}
+            </div>
+          ))}
+        </div>
+
+        {/* Categories */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {sortedCategories.map((cat) => {
+            const isCollapsed = collapsedCategories[cat];
+            const catHabits = groupedHabits[cat];
+            const avgPct = categoryStats[cat]?.avgPct ?? 0;
+
+            return (
+              <div key={cat} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* Mobile category header */}
+                <div
+                  className="mobile-cat-header"
+                  onClick={() => toggleCategory(cat)}
+                >
+                  {/* Chevron */}
+                  <ChevronDown
+                    size={15}
+                    style={{
+                      flexShrink: 0,
+                      color: "var(--text-muted)",
+                      transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                    }}
+                  />
+                  {/* Category name + count */}
+                  <span
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 600,
+                      color: "var(--accent)",
+                      fontFamily: "var(--font-body), sans-serif",
+                      lineHeight: 1,
+                      flex: 1,
+                    }}
+                  >
+                    {cat}{" "}
+                    <span style={{ opacity: 0.4, fontSize: 14, fontWeight: 500 }}>
+                      ({catHabits.length})
+                    </span>
+                  </span>
+                  {/* Progress bar + pct */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 4,
+                        borderRadius: 99,
+                        background: "var(--bg-surface, #1c1c1c)",
+                        overflow: "hidden",
+                        border: "1px solid var(--border-main)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${avgPct}%`,
+                          height: "100%",
+                          background: "var(--accent)",
+                          borderRadius: 99,
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "var(--font-mono), monospace",
+                        color: "var(--text-muted)",
+                        fontWeight: 600,
+                        minWidth: 28,
+                        textAlign: "right",
+                      }}
+                    >
+                      {avgPct}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Habit rows */}
+                {!isCollapsed && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {catHabits.map((habit) => (
+                      <MobileHabitRow
+                        key={habit.id}
+                        habit={habit}
+                        isCurrent={isCurrent}
+                        today={today}
+                        month={month}
+                        year={year}
+                        isFutureMonth={isFutureMonth}
+                        habitStats={habitStats}
+                        onTap={safeOnTap}
+                        onQuickLog={safeOnQuickLog}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+  }
+
+  // ── Desktop render path (unchanged) ───────────────────────────────────────
   return (
     <>
       {/* ------------------------------------------------------------------ */}

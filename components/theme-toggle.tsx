@@ -67,7 +67,7 @@ export default function ThemeToggle() {
           transition={{ duration: 0.3, ease: "backOut" }}
           style={{ position: "absolute" }}
         >
-          {isDark ? <Sun size={20} /> : <Moon size={20} />}
+          {isDark ? <Sun size={20} /> : <Moon size={20} />} 
         </motion.div>
       </AnimatePresence>
     </motion.button>

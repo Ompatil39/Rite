@@ -40,6 +40,11 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
       <style>{`
         .month-nav-slot-root { display: none; }
         @media (max-width: 768px) {
+          .theme-toggle-btn {
+  top: auto !important;
+  bottom: 100px !important;
+  right: 19px !important;
+}
           .top-left-header { top: 16px !important; left: 16px !important; position: absolute !important; }
           .top-left-header h1 { font-size: 28px !important; }
           .floating-nav {

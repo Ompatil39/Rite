@@ -56,630 +56,10 @@ function MonthNavPortal({ children }: { children: ReactNode }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Static styles — defined at module level so they are never recreated and the
+// <style> tag content is a stable string reference across all renders.
 // ---------------------------------------------------------------------------
-export default function HabitTracker() {
-  const [now, setNow] = useState(() => new Date());
-  const [month, setMonth] = useState(() => new Date().getMonth());
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [habits, setHabits] = useState<Habit[]>([]);
-
-  const [pulsingCell, setPulsingCell] = useState<string | null>(null);
-  const [collapsedCategories, setCollapsedCategories] = useState<
-    Record<string, boolean>
-  >({});
-  const [editingCategory, setEditingCategory] = useState<string | null>(null);
-  const [editCategoryName, setEditCategoryName] = useState("");
-  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
-  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
-  const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [expandedCalendar, setExpandedCalendar] = useState<string | null>(null);
-  const [isMonthView, setIsMonthView] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-  const [touchY, setTouchY] = useState<number | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-
-  const hoveredCellRef = useRef<{ hid: string; idx: number } | null>(null);
-  const cycleRef = useRef<any>(null);
-  const supabaseRef    = useRef(createClient());
-  const habitsCacheRef = useRef<Map<string, Habit[]>>(new Map());
-  const activeHabitsKeyRef = useRef<string | null>(null);
-  const viewKeyRef = useRef<string | null>(null);
-
-  // Mobile-only state --------------------------------------------------------
-  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
-  const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
-  const [sheetDeleteConfirm, setSheetDeleteConfirm] = useState(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const dim = getDaysInMonth(month, year);
-  const dayNums = Array.from({ length: dim }, (_, i) => i + 1);
-  const today = now.getDate();
-  const isCurrent = month === now.getMonth() && year === now.getFullYear();
-  const isFutureMonth =
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month > now.getMonth());
-
-  const currentWeekStart = today - (now.getDay() === 0 ? 6 : now.getDay() - 1);
-  const weekStart = isCurrent ? Math.max(1, currentWeekStart) : 1;
-  const weekEnd = Math.min(dim, weekStart + 6);
-  const visibleDays = isMonthView
-    ? dayNums
-    : dayNums.filter((d) => d >= weekStart && d <= weekEnd);
-
-  // -------------------------------------------------------------------------
-  // Trigger pulse animation on a cell
-  // -------------------------------------------------------------------------
-  const triggerPulse = (hid: string, idx: number) => {
-    const key = `${hid}-${idx}`;
-    setPulsingCell(key);
-    setTimeout(() => setPulsingCell((k) => (k === key ? null : k)), 220);
-  };
-
-  // -------------------------------------------------------------------------
-  // Mobile helpers: toast + sheet handlers
-  // -------------------------------------------------------------------------
-  const showToast = useCallback((msg: string, color: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ msg, color });
-    toastTimerRef.current = setTimeout(() => setToast(null), 2000);
-  }, []);
-
-  const onTap = useCallback((habit: Habit) => {
-    setSheetDeleteConfirm(false);
-    setSelectedHabit(habit);
-  }, []);
-
-  const onQuickLog = useCallback((habit: Habit) => {
-    // Cycle today's status for this habit
-    const todayIdx = new Date().getDate() - 1;
-    setHabits((prev) =>
-      prev.map((h) => {
-        if (h.id !== habit.id) return h;
-        const days = [...h.days];
-        const cur = days[todayIdx];
-        const next =
-          cur === STATUS.NONE
-            ? STATUS.DONE
-            : cur === STATUS.DONE
-              ? STATUS.PARTIAL
-              : cur === STATUS.PARTIAL
-                ? STATUS.MISSED
-                : STATUS.NONE;
-        days[todayIdx] = next;
-        hapticFeedback(next);
-        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
-        if (user) {
-          if (next === STATUS.NONE) {
-            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
-          } else {
-            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: next }, { onConflict: "habit_id,date" }).then();
-          }
-        }
-        showToast(`${habit.name}: ${S[next].label}`, S[next].bg);
-        // Sync selectedHabit if sheet is open for this habit
-        setSelectedHabit((sel) => (sel?.id === habit.id ? { ...h, days } : sel));
-        return { ...h, days };
-      }),
-    );
-  }, [month, year, user, showToast]);
-
-  // ── Mobile: log a specific status from bottom sheet ──────────────────────
-  const logStatusFromSheet = useCallback((habit: Habit, nextStatus: number) => {
-    const todayIdx = new Date().getDate() - 1;
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
-    setHabits((prev) =>
-      prev.map((h) => {
-        if (h.id !== habit.id) return h;
-        const days = [...h.days];
-        days[todayIdx] = nextStatus;
-        hapticFeedback(nextStatus);
-        if (user) {
-          if (nextStatus === STATUS.NONE) {
-            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
-          } else {
-            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: nextStatus }, { onConflict: "habit_id,date" }).then();
-          }
-        }
-        return { ...h, days };
-      }),
-    );
-    setSelectedHabit((sel) => {
-      if (!sel || sel.id !== habit.id) return sel;
-      const days = [...sel.days];
-      days[todayIdx] = nextStatus;
-      return { ...sel, days };
-    });
-    showToast(`${habit.name}: ${S[nextStatus].label}`, S[nextStatus].bg);
-    setTimeout(() => setSelectedHabit(null), 380);
-  }, [month, year, user, showToast]);
-
-  // -------------------------------------------------------------------------
-  // Cycle cell status
-  // -------------------------------------------------------------------------
-  function cycleStatus(
-    hid: string,
-    idx: number,
-    reverse = false,
-    pulse = false,
-  ) {
-    setHabits((prev) =>
-      prev.map((h) => {
-        if (h.id !== hid) return h;
-        const days = [...h.days];
-        const cur = days[idx];
-        const next = reverse
-          ? cur === STATUS.NONE
-            ? STATUS.MISSED
-            : cur === STATUS.MISSED
-              ? STATUS.PARTIAL
-              : cur === STATUS.PARTIAL
-                ? STATUS.DONE
-                : STATUS.NONE
-          : cur === STATUS.NONE
-            ? STATUS.DONE
-            : cur === STATUS.DONE
-              ? STATUS.PARTIAL
-              : cur === STATUS.PARTIAL
-                ? STATUS.MISSED
-                : STATUS.NONE;
-        days[idx] = next;
-        hapticFeedback(next);
-
-        if (user) {
-          const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(idx + 1).padStart(2, "0")}`;
-          if (next === STATUS.NONE) {
-            supabaseRef.current
-              .from("habit_logs")
-              .delete()
-              .eq("habit_id", hid)
-              .eq("date", dateStr)
-              .then();
-          } else {
-            supabaseRef.current
-              .from("habit_logs")
-              .upsert(
-                { habit_id: hid, date: dateStr, status: next },
-                { onConflict: "habit_id,date" },
-              )
-              .then();
-          }
-        }
-
-        return { ...h, days };
-      }),
-    );
-    if (pulse) triggerPulse(hid, idx);
-  }
-
-  useEffect(() => {
-    cycleRef.current = cycleStatus;
-  });
-
-  // -------------------------------------------------------------------------
-  // Load habits from Supabase
-  // -------------------------------------------------------------------------
-  const loadHabitsFromDB = useCallback(
-    async (userId: string, m: number, y: number) => {
-      const supabase = supabaseRef.current;
-      const daysInMonth = getDaysInMonth(m, y);
-      const cacheKey = `${userId}:${y}-${m}`;
-      const cached = habitsCacheRef.current.get(cacheKey);
-      if (cached) {
-        if (viewKeyRef.current === cacheKey) {
-          setHabits(cached);
-          activeHabitsKeyRef.current = cacheKey;
-        }
-        return;
-      }
-
-      const { data: habitsData } = await supabase
-        .from("habits")
-        .select("id, name, category, sort_order")
-        .eq("user_id", userId)
-        .order("sort_order", { ascending: true });
-
-      if (!habitsData || habitsData.length === 0) {
-        const empty: Habit[] = [];
-        habitsCacheRef.current.set(cacheKey, empty);
-        if (viewKeyRef.current === cacheKey) {
-          setHabits(empty);
-          activeHabitsKeyRef.current = cacheKey;
-        }
-        return;
-      }
-
-      const startDate = `${y}-${String(m + 1).padStart(2, "0")}-01`;
-      const endDate = `${y}-${String(m + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
-      const habitIds = habitsData.map((h: any) => h.id);
-
-      const { data: logsData } = await supabase
-        .from("habit_logs")
-        .select("habit_id, date, status")
-        .in("habit_id", habitIds)
-        .gte("date", startDate)
-        .lte("date", endDate);
-
-      const logsMap: Record<string, Record<number, number>> = {};
-      (logsData || []).forEach((log: any) => {
-        if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
-        const day = new Date(log.date + "T00:00:00").getDate();
-        logsMap[log.habit_id][day - 1] = log.status;
-      });
-
-      const assembled: Habit[] = habitsData.map((h: any) => {
-        const days = Array(31).fill(STATUS.NONE);
-        Object.entries(logsMap[h.id] || {}).forEach(([idx, status]) => {
-          days[Number(idx)] = status;
-        });
-        return {
-          id: h.id,
-          name: h.name,
-          category: h.category || "Uncategorized",
-          sort_order: h.sort_order,
-          days,
-        };
-      });
-
-      habitsCacheRef.current.set(cacheKey, assembled);
-      if (viewKeyRef.current === cacheKey) {
-        setHabits(assembled);
-        activeHabitsKeyRef.current = cacheKey;
-      }
-    },
-    []
-  );
-  // Re-load on month/year change
-  useEffect(() => {
-    if (user) {
-      const key = `${user.id}:${year}-${month}`;
-      viewKeyRef.current = key;
-      loadHabitsFromDB(user.id, month, year);
-    }
-  }, [month, year, user, loadHabitsFromDB]);
-
-  // Keep cache in sync with the currently displayed month
-  useEffect(() => {
-    const key = activeHabitsKeyRef.current;
-    if (!user || !key) return;
-    habitsCacheRef.current.set(key, habits);
-  }, [habits, user]);
-
-  // -------------------------------------------------------------------------
-  // Mount / auth
-  // -------------------------------------------------------------------------
-  useEffect(() => {
-    setMounted(true);
-
-    // Refresh `now` when the calendar day rolls over (checked every minute)
-    const dayRefresh = setInterval(() => {
-      const fresh = new Date();
-      setNow((prev) => (fresh.getDate() !== prev.getDate() ? fresh : prev));
-    }, 60_000);
-
-    const checkMobile = () => {
-      const mobile = window.innerWidth <= 768;
-      setIsMobile(mobile);
-      if (!mobile) setIsMonthView(true);
-    };
-    checkMobile();
-    if (window.innerWidth <= 768) setIsMonthView(false);
-    window.addEventListener("resize", checkMobile);
-
-    const supabase = supabaseRef.current;
-    supabase.auth
-      .getUser()
-      .then(async ({ data: { user: u } }) => {
-        if (u) {
-          setUser(u);
-          await loadHabitsFromDB(u.id, now.getMonth(), now.getFullYear());
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          setUser(session.user);
-          loadHabitsFromDB(session.user.id, month, year);
-        } else {
-          setUser(null);
-          setHabits([]);
-          habitsCacheRef.current.clear();
-          activeHabitsKeyRef.current = null;
-          viewKeyRef.current = null;
-        }
-      },
-    );
-
-    return () => {
-      clearInterval(dayRefresh);
-      window.removeEventListener("resize", checkMobile);
-      authListener.subscription.unsubscribe();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Scroll-wheel cycling
-  useEffect(() => {
-    const handleWheel = (e: WheelEvent) => {
-      if (hoveredCellRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        cycleRef.current(
-          hoveredCellRef.current.hid,
-          hoveredCellRef.current.idx,
-          e.deltaY < 0,
-          true,
-        );
-      }
-    };
-    document.addEventListener("wheel", handleWheel, { passive: false });
-    return () => document.removeEventListener("wheel", handleWheel);
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // Month navigation
-  // -------------------------------------------------------------------------
-  function prevMonth() {
-    if (month === 0) {
-      setMonth(11);
-      setYear((y) => y - 1);
-    } else setMonth((m) => m - 1);
-  }
-  function nextMonth() {
-    if (month === 11) {
-      setMonth(0);
-      setYear((y) => y + 1);
-    } else setMonth((m) => m + 1);
-  }
-
-  // -------------------------------------------------------------------------
-  // Add / remove habits
-  // -------------------------------------------------------------------------
-
-  // Shared core: optimistically adds to state, then syncs to DB.
-  // On DB error the temp row is rolled back.
-  const insertHabit = useCallback(
-    async (rawName: string, rawCategory: string) => {
-      const name = clampHabitName(rawName.trim());
-      if (!name) return;
-      const category = rawCategory.trim() || "Uncategorized";
-
-      const tempId: string =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? `temp-${crypto.randomUUID()}`
-          : `temp-${Math.random().toString(36).slice(2)}`;
-      const sortOrder = habits.length;
-      const optimistic: Habit = {
-        id: tempId,
-        name,
-        category,
-        days: Array(31).fill(STATUS.NONE),
-        sort_order: sortOrder,
-      };
-
-      // 1. Show immediately -- no waiting on network
-      setHabits((prev) => [...prev, optimistic]);
-
-      if (user) {
-        const { data, error } = await supabaseRef.current
-          .from("habits")
-          .insert({ user_id: user.id, name, category, sort_order: sortOrder })
-          .select()
-          .single();
-
-        if (error) {
-          // Rollback the optimistic row
-          setHabits((prev) => prev.filter((h) => h.id !== tempId));
-        } else if (data) {
-          // Swap temp id -> real DB id
-          setHabits((prev) =>
-            prev.map((h) =>
-              h.id === tempId
-                ? { ...h, id: data.id, sort_order: data.sort_order }
-                : h,
-            ),
-          );
-        }
-      }
-    },
-    [habits.length, user],
-  );
-  async function removeHabit(id: string) {
-    setHabits((prev) => prev.filter((h) => h.id !== id));
-    setExpandedCalendar((cur) => (cur === id ? null : cur));
-    if (user) await supabaseRef.current.from("habits").delete().eq("id", id);
-  }
-
-  // -------------------------------------------------------------------------
-  // Category management
-  // -------------------------------------------------------------------------
-  const toggleCategory = (cat: string) =>
-    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
-
-  const startEditCategory = (cat: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingCategory(cat);
-    setEditCategoryName(cat);
-  };
-
-  const saveCategoryEdit = async (oldCat: string) => {
-    const newCat = editCategoryName.trim();
-    if (newCat && newCat !== oldCat) {
-      setHabits((prev) =>
-        prev.map((h) =>
-          (h.category || "Uncategorized") === oldCat
-            ? { ...h, category: newCat }
-            : h,
-        ),
-      );
-      if (user) {
-        const ids = habits
-          .filter((h) => (h.category || "Uncategorized") === oldCat)
-          .map((h) => h.id);
-        if (ids.length > 0) {
-          await supabaseRef.current
-            .from("habits")
-            .update({ category: newCat })
-            .in("id", ids);
-        }
-      }
-    }
-    setEditingCategory(null);
-  };
-
-  const confirmDeleteCategory = (cat: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCategoryToDelete(cat);
-  };
-
-  const executeDeleteCategory = async () => {
-    if (!categoryToDelete) return;
-    const ids = habits
-      .filter((h) => (h.category || "Uncategorized") === categoryToDelete)
-      .map((h) => h.id);
-    setHabits((prev) =>
-      prev.map((h) =>
-        (h.category || "Uncategorized") === categoryToDelete
-          ? { ...h, category: "Uncategorized" }
-          : h,
-      ),
-    );
-    // Prune the deleted category from the order array so it never re-appears
-    setCategoryOrder((prev) => prev.filter((c) => c !== categoryToDelete));
-    if (user && ids.length > 0) {
-      await supabaseRef.current
-        .from("habits")
-        .update({ category: "Uncategorized" })
-        .in("id", ids);
-    }
-    setCategoryToDelete(null);
-  };
-
-  // -------------------------------------------------------------------------
-  // Grouping + ordering
-  // -------------------------------------------------------------------------
-  const groupedHabits = useMemo(
-    () =>
-      habits.reduce(
-        (acc, habit) => {
-          const cat = habit.category || "Uncategorized";
-          if (!acc[cat]) acc[cat] = [];
-          acc[cat].push(habit);
-          return acc;
-        },
-        {} as Record<string, Habit[]>,
-      ),
-    [habits],
-  );
-
-  useEffect(() => {
-    setCategoryOrder((prev) => {
-      const current = Object.keys(groupedHabits);
-      const newCats = current.filter((c) => !prev.includes(c));
-      if (newCats.length > 0) {
-        newCats.sort((a, b) => {
-          if (a === "Uncategorized") return 1;
-          if (b === "Uncategorized") return -1;
-          return a.localeCompare(b);
-        });
-        return [...prev, ...newCats];
-      }
-      return prev;
-    });
-  }, [groupedHabits]);
-
-  const sortedCategories = useMemo(() => {
-    const sorted = categoryOrder.filter((c) => groupedHabits[c]);
-    Object.keys(groupedHabits).forEach((c) => {
-      if (!sorted.includes(c)) sorted.push(c);
-    });
-    return sorted;
-  }, [categoryOrder, groupedHabits]);
-
-  const habitStats = useMemo(() => {
-    const stats: Record<string, { streak: number; pct: number }> = {};
-    habits.forEach((habit) => {
-      stats[habit.id] = {
-        streak: getStreak(habit.days, dim),
-        pct: getPct(habit.days, dim),
-      };
-    });
-    return stats;
-  }, [habits, dim]);
-
-  const categoryStats = useMemo(() => {
-    const stats: Record<string, { activeStreaks: number; avgPct: number }> = {};
-    Object.entries(groupedHabits).forEach(([cat, catHabits]) => {
-      let activeStreaks = 0;
-      let pctSum = 0;
-      catHabits.forEach((habit) => {
-        const hStats = habitStats[habit.id];
-        if (hStats?.streak > 0) activeStreaks++;
-        pctSum += hStats?.pct ?? 0;
-      });
-      stats[cat] = {
-        activeStreaks,
-        avgPct: catHabits.length ? Math.round(pctSum / catHabits.length) : 0,
-      };
-    });
-    return stats;
-  }, [groupedHabits, habitStats]);
-
-  // -------------------------------------------------------------------------
-  // Drag & drop
-  // -------------------------------------------------------------------------
-  const onDragEnd = (result: DropResult) => {
-    const { source, destination, type } = result;
-    if (!destination) return;
-
-    if (type === "category") {
-      const newOrder = Array.from(sortedCategories);
-      const [removed] = newOrder.splice(source.index, 1);
-      newOrder.splice(destination.index, 0, removed);
-      setCategoryOrder(newOrder);
-      return;
-    }
-
-    if (type === "habit") {
-      const srcCat = source.droppableId;
-      const destCat = destination.droppableId;
-
-      if (srcCat === destCat) {
-        const arr = Array.from(groupedHabits[srcCat]);
-        const [removed] = arr.splice(source.index, 1);
-        arr.splice(destination.index, 0, removed);
-        setHabits((prev) => [
-          ...prev.filter((h) => (h.category || "Uncategorized") !== srcCat),
-          ...arr,
-        ]);
-      } else {
-        const srcArr = Array.from(groupedHabits[srcCat]);
-        const destArr = Array.from(groupedHabits[destCat] || []);
-        const [removed] = srcArr.splice(source.index, 1);
-        removed.category = destCat === "Uncategorized" ? "" : destCat;
-        destArr.splice(destination.index, 0, removed);
-        setHabits((prev) => [
-          ...prev.filter((h) => {
-            const c = h.category || "Uncategorized";
-            return c !== srcCat && c !== destCat;
-          }),
-          ...srcArr,
-          ...destArr,
-        ]);
-      }
-    }
-  };
-
-  // -------------------------------------------------------------------------
-  // Memoize static styles so the string isn't recreated on every render
-  // NOTE: must be above all early returns to satisfy Rules of Hooks
-  // -------------------------------------------------------------------------
-  const cssStyles = useMemo(
-    () => `
+const HABIT_CSS = `
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root.light .habit-card { background: #ffffff !important; border-color: var(--border-main) !important; box-shadow: 0 0.25rem 1rem rgba(0,0,0,0.03) !important; }
@@ -894,9 +274,625 @@ export default function HabitTracker() {
 
         ::-webkit-scrollbar { height: 0.25rem; width: 0.25rem; background: var(--bg-base); }
         ::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 0.25rem; }
-  `,
-    [],
+`;
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+export default function HabitTracker() {
+  const [now, setNow] = useState(() => new Date());
+  const [month, setMonth] = useState(() => new Date().getMonth());
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [habits, setHabits] = useState<Habit[]>([]);
+
+  const [pulsingCell, setPulsingCell] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<
+    Record<string, boolean>
+  >({});
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [categoryOrder, setCategoryOrder] = useState<string[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [expandedCalendar, setExpandedCalendar] = useState<string | null>(null);
+  const [isMonthView, setIsMonthView] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [touchY, setTouchY] = useState<number | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+
+  const hoveredCellRef = useRef<{ hid: string; idx: number } | null>(null);
+  const supabaseRef    = useRef(createClient());
+  const habitsCacheRef = useRef<Map<string, Habit[]>>(new Map());
+  const activeHabitsKeyRef = useRef<string | null>(null);
+  const viewKeyRef = useRef<string | null>(null);
+  // Debounce rapid cell clicks: maps "habitId-dayIdx" → pending timeout id.
+  // The Supabase mutation fires only after 600 ms of inactivity on that cell.
+  const mutationDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Mobile-only state --------------------------------------------------------
+  const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
+  const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
+  const [sheetDeleteConfirm, setSheetDeleteConfirm] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dim = useMemo(() => getDaysInMonth(month, year), [month, year]);
+  const dayNums = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
+  const today = now.getDate();
+  const isCurrent = month === now.getMonth() && year === now.getFullYear();
+  const isFutureMonth =
+    year > now.getFullYear() ||
+    (year === now.getFullYear() && month > now.getMonth());
+
+  const currentWeekStart = today - (now.getDay() === 0 ? 6 : now.getDay() - 1);
+  const weekStart = isCurrent ? Math.max(1, currentWeekStart) : 1;
+  const weekEnd = Math.min(dim, weekStart + 6);
+  const visibleDays = useMemo(
+    () => isMonthView ? dayNums : dayNums.filter((d) => d >= weekStart && d <= weekEnd),
+    [isMonthView, dayNums, weekStart, weekEnd],
   );
+
+  // -------------------------------------------------------------------------
+  // Trigger pulse animation on a cell
+  // -------------------------------------------------------------------------
+  const triggerPulse = useCallback((hid: string, idx: number) => {
+    const key = `${hid}-${idx}`;
+    setPulsingCell(key);
+    setTimeout(() => setPulsingCell((k) => (k === key ? null : k)), 220);
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Mobile helpers: toast + sheet handlers
+  // -------------------------------------------------------------------------
+  const showToast = useCallback((msg: string, color: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ msg, color });
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000);
+  }, []);
+
+  const onTap = useCallback((habit: Habit) => {
+    setSheetDeleteConfirm(false);
+    setSelectedHabit(habit);
+  }, []);
+
+  const onQuickLog = useCallback((habit: Habit) => {
+    // Cycle today's status for this habit
+    const todayIdx = new Date().getDate() - 1;
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habit.id) return h;
+        const days = [...h.days];
+        const cur = days[todayIdx];
+        const next =
+          cur === STATUS.NONE
+            ? STATUS.DONE
+            : cur === STATUS.DONE
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.MISSED
+                : STATUS.NONE;
+        days[todayIdx] = next;
+        hapticFeedback(next);
+        const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
+        if (user) {
+          if (next === STATUS.NONE) {
+            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
+          } else {
+            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: next }, { onConflict: "habit_id,date" }).then();
+          }
+        }
+        showToast(`${habit.name}: ${S[next].label}`, S[next].bg);
+        // Sync selectedHabit if sheet is open for this habit
+        setSelectedHabit((sel) => (sel?.id === habit.id ? { ...h, days } : sel));
+        return { ...h, days };
+      }),
+    );
+  }, [month, year, user, showToast]);
+
+  // ── Mobile: log a specific status from bottom sheet ──────────────────────
+  const logStatusFromSheet = useCallback((habit: Habit, nextStatus: number) => {
+    const todayIdx = new Date().getDate() - 1;
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(todayIdx + 1).padStart(2, "0")}`;
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habit.id) return h;
+        const days = [...h.days];
+        days[todayIdx] = nextStatus;
+        hapticFeedback(nextStatus);
+        if (user) {
+          if (nextStatus === STATUS.NONE) {
+            supabaseRef.current.from("habit_logs").delete().eq("habit_id", h.id).eq("date", dateStr).then();
+          } else {
+            supabaseRef.current.from("habit_logs").upsert({ habit_id: h.id, date: dateStr, status: nextStatus }, { onConflict: "habit_id,date" }).then();
+          }
+        }
+        return { ...h, days };
+      }),
+    );
+    setSelectedHabit((sel) => {
+      if (!sel || sel.id !== habit.id) return sel;
+      const days = [...sel.days];
+      days[todayIdx] = nextStatus;
+      return { ...sel, days };
+    });
+    showToast(`${habit.name}: ${S[nextStatus].label}`, S[nextStatus].bg);
+    setTimeout(() => setSelectedHabit(null), 380);
+  }, [month, year, user, showToast]);
+
+  // -------------------------------------------------------------------------
+  // Cycle cell status — useCallback so the reference is stable between renders
+  // when month/year/user haven't changed (avoids re-creating row callbacks).
+  // Supabase writes are debounced: rapid clicks update local state immediately
+  // but only fire one network request after 600 ms of inactivity per cell.
+  // -------------------------------------------------------------------------
+  const cycleStatus = useCallback(function cycleStatus(
+    hid: string,
+    idx: number,
+    reverse = false,
+    pulse = false,
+  ) {
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== hid) return h;
+        const days = [...h.days];
+        const cur = days[idx];
+        const next = reverse
+          ? cur === STATUS.NONE
+            ? STATUS.MISSED
+            : cur === STATUS.MISSED
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.DONE
+                : STATUS.NONE
+          : cur === STATUS.NONE
+            ? STATUS.DONE
+            : cur === STATUS.DONE
+              ? STATUS.PARTIAL
+              : cur === STATUS.PARTIAL
+                ? STATUS.MISSED
+                : STATUS.NONE;
+        days[idx] = next;
+        hapticFeedback(next);
+
+        if (user) {
+          const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(idx + 1).padStart(2, "0")}`;
+          const debounceKey = `${hid}-${idx}`;
+          const existing = mutationDebounceRef.current.get(debounceKey);
+          if (existing) clearTimeout(existing);
+          mutationDebounceRef.current.set(
+            debounceKey,
+            setTimeout(() => {
+              mutationDebounceRef.current.delete(debounceKey);
+              if (next === STATUS.NONE) {
+                supabaseRef.current
+                  .from("habit_logs")
+                  .delete()
+                  .eq("habit_id", hid)
+                  .eq("date", dateStr)
+                  .then();
+              } else {
+                supabaseRef.current
+                  .from("habit_logs")
+                  .upsert(
+                    { habit_id: hid, date: dateStr, status: next },
+                    { onConflict: "habit_id,date" },
+                  )
+                  .then();
+              }
+            }, 600),
+          );
+        }
+
+        return { ...h, days };
+      }),
+    );
+    if (pulse) triggerPulse(hid, idx);
+  }, [month, year, user]);
+
+  // -------------------------------------------------------------------------
+  // Load habits from Supabase
+  // -------------------------------------------------------------------------
+  const loadHabitsFromDB = useCallback(
+    async (userId: string, m: number, y: number) => {
+      const supabase = supabaseRef.current;
+      const daysInMonth = getDaysInMonth(m, y);
+      const cacheKey = `${userId}:${y}-${m}`;
+      const cached = habitsCacheRef.current.get(cacheKey);
+      if (cached) {
+        if (viewKeyRef.current === cacheKey) {
+          setHabits(cached);
+          activeHabitsKeyRef.current = cacheKey;
+        }
+        return;
+      }
+
+      const { data: habitsData } = await supabase
+        .from("habits")
+        .select("id, name, category, sort_order")
+        .eq("user_id", userId)
+        .order("sort_order", { ascending: true });
+
+      if (!habitsData || habitsData.length === 0) {
+        const empty: Habit[] = [];
+        habitsCacheRef.current.set(cacheKey, empty);
+        if (viewKeyRef.current === cacheKey) {
+          setHabits(empty);
+          activeHabitsKeyRef.current = cacheKey;
+        }
+        return;
+      }
+
+      const startDate = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+      const endDate = `${y}-${String(m + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+      const habitIds = habitsData.map((h: any) => h.id);
+
+      const { data: logsData } = await supabase
+        .from("habit_logs")
+        .select("habit_id, date, status")
+        .in("habit_id", habitIds)
+        .gte("date", startDate)
+        .lte("date", endDate);
+
+      const logsMap: Record<string, Record<number, number>> = {};
+      (logsData || []).forEach((log: any) => {
+        if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
+        const day = new Date(log.date + "T00:00:00").getDate();
+        logsMap[log.habit_id][day - 1] = log.status;
+      });
+
+      const assembled: Habit[] = habitsData.map((h: any) => {
+        const days = Array(31).fill(STATUS.NONE);
+        Object.entries(logsMap[h.id] || {}).forEach(([idx, status]) => {
+          days[Number(idx)] = status;
+        });
+        return {
+          id: h.id,
+          name: h.name,
+          category: h.category || "Uncategorized",
+          sort_order: h.sort_order,
+          days,
+        };
+      });
+
+      habitsCacheRef.current.set(cacheKey, assembled);
+      if (viewKeyRef.current === cacheKey) {
+        setHabits(assembled);
+        activeHabitsKeyRef.current = cacheKey;
+      }
+    },
+    []
+  );
+  // Re-load on month/year change
+  useEffect(() => {
+    if (user) {
+      const key = `${user.id}:${year}-${month}`;
+      viewKeyRef.current = key;
+      loadHabitsFromDB(user.id, month, year);
+    }
+  }, [month, year, user, loadHabitsFromDB]);
+
+  // Keep cache in sync with the currently displayed month
+  useEffect(() => {
+    const key = activeHabitsKeyRef.current;
+    if (!user || !key) return;
+    habitsCacheRef.current.set(key, habits);
+  }, [habits, user]);
+
+  // -------------------------------------------------------------------------
+  // Mount / auth
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    setMounted(true);
+
+    // Refresh `now` when the calendar day rolls over (checked every minute)
+    const dayRefresh = setInterval(() => {
+      const fresh = new Date();
+      setNow((prev) => (fresh.getDate() !== prev.getDate() ? fresh : prev));
+    }, 60_000);
+
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (!mobile) setIsMonthView(true);
+    };
+    checkMobile();
+    if (window.innerWidth <= 768) setIsMonthView(false);
+    window.addEventListener("resize", checkMobile);
+
+    const supabase = supabaseRef.current;
+    supabase.auth
+      .getUser()
+      .then(async ({ data: { user: u } }) => {
+        if (u) {
+          setUser(u);
+          await loadHabitsFromDB(u.id, now.getMonth(), now.getFullYear());
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          loadHabitsFromDB(session.user.id, month, year);
+        } else {
+          setUser(null);
+          setHabits([]);
+          habitsCacheRef.current.clear();
+          activeHabitsKeyRef.current = null;
+          viewKeyRef.current = null;
+        }
+      },
+    );
+
+    return () => {
+      clearInterval(dayRefresh);
+      window.removeEventListener("resize", checkMobile);
+      authListener.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // NOTE: The scroll-wheel cell cycling listener is registered inside HabitGrid
+  // on the grid scroll container element, so it no longer needs passive:false
+  // on the document (which was blocking main-thread scroll on the whole page).
+
+  // -------------------------------------------------------------------------
+  // Month navigation
+  // -------------------------------------------------------------------------
+  function prevMonth() {
+    if (month === 0) {
+      setMonth(11);
+      setYear((y) => y - 1);
+    } else setMonth((m) => m - 1);
+  }
+  function nextMonth() {
+    if (month === 11) {
+      setMonth(0);
+      setYear((y) => y + 1);
+    } else setMonth((m) => m + 1);
+  }
+
+  // -------------------------------------------------------------------------
+  // Add / remove habits
+  // -------------------------------------------------------------------------
+
+  // Shared core: optimistically adds to state, then syncs to DB.
+  // On DB error the temp row is rolled back.
+  const insertHabit = useCallback(
+    async (rawName: string, rawCategory: string) => {
+      const name = clampHabitName(rawName.trim());
+      if (!name) return;
+      const category = rawCategory.trim() || "Uncategorized";
+
+      const tempId: string =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? `temp-${crypto.randomUUID()}`
+          : `temp-${Math.random().toString(36).slice(2)}`;
+      const sortOrder = habits.length;
+      const optimistic: Habit = {
+        id: tempId,
+        name,
+        category,
+        days: Array(31).fill(STATUS.NONE),
+        sort_order: sortOrder,
+      };
+
+      // 1. Show immediately -- no waiting on network
+      setHabits((prev) => [...prev, optimistic]);
+
+      if (user) {
+        const { data, error } = await supabaseRef.current
+          .from("habits")
+          .insert({ user_id: user.id, name, category, sort_order: sortOrder })
+          .select()
+          .single();
+
+        if (error) {
+          // Rollback the optimistic row
+          setHabits((prev) => prev.filter((h) => h.id !== tempId));
+        } else if (data) {
+          // Swap temp id -> real DB id
+          setHabits((prev) =>
+            prev.map((h) =>
+              h.id === tempId
+                ? { ...h, id: data.id, sort_order: data.sort_order }
+                : h,
+            ),
+          );
+        }
+      }
+    },
+    [habits.length, user],
+  );
+  const removeHabit = useCallback(async (id: string) => {
+    setHabits((prev) => prev.filter((h) => h.id !== id));
+    setExpandedCalendar((cur) => (cur === id ? null : cur));
+    if (user) await supabaseRef.current.from("habits").delete().eq("id", id);
+  }, [user]);
+
+  // -------------------------------------------------------------------------
+  // Category management
+  // -------------------------------------------------------------------------
+  const toggleCategory = useCallback((cat: string) =>
+    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] })), []);
+
+  const startEditCategory = useCallback((cat: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingCategory(cat);
+    setEditCategoryName(cat);
+  }, []);
+
+  const saveCategoryEdit = useCallback(async (oldCat: string) => {
+    const newCat = editCategoryName.trim();
+    if (newCat && newCat !== oldCat) {
+      setHabits((prev) =>
+        prev.map((h) =>
+          (h.category || "Uncategorized") === oldCat
+            ? { ...h, category: newCat }
+            : h,
+        ),
+      );
+      if (user) {
+        const ids = habits
+          .filter((h) => (h.category || "Uncategorized") === oldCat)
+          .map((h) => h.id);
+        if (ids.length > 0) {
+          await supabaseRef.current
+            .from("habits")
+            .update({ category: newCat })
+            .in("id", ids);
+        }
+      }
+    }
+    setEditingCategory(null);
+  }, [editCategoryName, habits, user]);
+
+  const confirmDeleteCategory = useCallback((cat: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCategoryToDelete(cat);
+  }, []);
+
+  const executeDeleteCategory = useCallback(async () => {
+    if (!categoryToDelete) return;
+    const ids = habits
+      .filter((h) => (h.category || "Uncategorized") === categoryToDelete)
+      .map((h) => h.id);
+    setHabits((prev) =>
+      prev.map((h) =>
+        (h.category || "Uncategorized") === categoryToDelete
+          ? { ...h, category: "Uncategorized" }
+          : h,
+      ),
+    );
+    // Prune the deleted category from the order array so it never re-appears
+    setCategoryOrder((prev) => prev.filter((c) => c !== categoryToDelete));
+    if (user && ids.length > 0) {
+      await supabaseRef.current
+        .from("habits")
+        .update({ category: "Uncategorized" })
+        .in("id", ids);
+    }
+    setCategoryToDelete(null);
+  }, [categoryToDelete, habits, user]);
+
+  // -------------------------------------------------------------------------
+  // Grouping + ordering
+  // -------------------------------------------------------------------------
+  const groupedHabits = useMemo(
+    () =>
+      habits.reduce(
+        (acc, habit) => {
+          const cat = habit.category || "Uncategorized";
+          if (!acc[cat]) acc[cat] = [];
+          acc[cat].push(habit);
+          return acc;
+        },
+        {} as Record<string, Habit[]>,
+      ),
+    [habits],
+  );
+
+  useEffect(() => {
+    setCategoryOrder((prev) => {
+      const current = Object.keys(groupedHabits);
+      const newCats = current.filter((c) => !prev.includes(c));
+      if (newCats.length > 0) {
+        newCats.sort((a, b) => {
+          if (a === "Uncategorized") return 1;
+          if (b === "Uncategorized") return -1;
+          return a.localeCompare(b);
+        });
+        return [...prev, ...newCats];
+      }
+      return prev;
+    });
+  }, [groupedHabits]);
+
+  const sortedCategories = useMemo(() => {
+    const sorted = categoryOrder.filter((c) => groupedHabits[c]);
+    Object.keys(groupedHabits).forEach((c) => {
+      if (!sorted.includes(c)) sorted.push(c);
+    });
+    return sorted;
+  }, [categoryOrder, groupedHabits]);
+
+  const habitStats = useMemo(() => {
+    const stats: Record<string, { streak: number; pct: number }> = {};
+    habits.forEach((habit) => {
+      stats[habit.id] = {
+        streak: getStreak(habit.days, dim),
+        pct: getPct(habit.days, dim),
+      };
+    });
+    return stats;
+  }, [habits, dim]);
+
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, { activeStreaks: number; avgPct: number }> = {};
+    Object.entries(groupedHabits).forEach(([cat, catHabits]) => {
+      let activeStreaks = 0;
+      let pctSum = 0;
+      catHabits.forEach((habit) => {
+        const hStats = habitStats[habit.id];
+        if (hStats?.streak > 0) activeStreaks++;
+        pctSum += hStats?.pct ?? 0;
+      });
+      stats[cat] = {
+        activeStreaks,
+        avgPct: catHabits.length ? Math.round(pctSum / catHabits.length) : 0,
+      };
+    });
+    return stats;
+  }, [groupedHabits, habitStats]);
+
+  // -------------------------------------------------------------------------
+  // Drag & drop
+  // -------------------------------------------------------------------------
+  const onDragEnd = (result: DropResult) => {
+    const { source, destination, type } = result;
+    if (!destination) return;
+
+    if (type === "category") {
+      const newOrder = Array.from(sortedCategories);
+      const [removed] = newOrder.splice(source.index, 1);
+      newOrder.splice(destination.index, 0, removed);
+      setCategoryOrder(newOrder);
+      return;
+    }
+
+    if (type === "habit") {
+      const srcCat = source.droppableId;
+      const destCat = destination.droppableId;
+
+      if (srcCat === destCat) {
+        const arr = Array.from(groupedHabits[srcCat]);
+        const [removed] = arr.splice(source.index, 1);
+        arr.splice(destination.index, 0, removed);
+        setHabits((prev) => [
+          ...prev.filter((h) => (h.category || "Uncategorized") !== srcCat),
+          ...arr,
+        ]);
+      } else {
+        const srcArr = Array.from(groupedHabits[srcCat]);
+        const destArr = Array.from(groupedHabits[destCat] || []);
+        const [removed] = srcArr.splice(source.index, 1);
+        removed.category = destCat === "Uncategorized" ? "" : destCat;
+        destArr.splice(destination.index, 0, removed);
+        setHabits((prev) => [
+          ...prev.filter((h) => {
+            const c = h.category || "Uncategorized";
+            return c !== srcCat && c !== destCat;
+          }),
+          ...srcArr,
+          ...destArr,
+        ]);
+      }
+    }
+  };
+
+  // cssStyles moved to module-level constant HABIT_CSS above the component.
 
   // -------------------------------------------------------------------------
   // Early returns (placed after all hooks to satisfy Rules of Hooks)
@@ -997,7 +993,7 @@ export default function HabitTracker() {
         overflowX: "hidden",
       }}
     >
-      <style>{cssStyles}</style>
+      <style>{HABIT_CSS}</style>
 
       <div
         className="page-container page-enter"

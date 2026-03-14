@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, X, Flame, BarChart2, ArrowUpDown } from "lucide-react";
 import type { DropResult } from "@hello-pangea/dnd";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -21,6 +21,17 @@ import {
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
 import HabitComposer from "./HabitComposer";
+import OnboardingTour from "./OnboardingTour";
+
+// Shared tooltip wrapper — same design as HabitGrid's Tip
+function Tip({ label, children, down = false }: { label: string; children: React.ReactNode; down?: boolean }) {
+  return (
+    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }} className="tip-wrap">
+      {children}
+      <div className={`tip${down ? " tip-down" : ""}`}>{label}</div>
+    </div>
+  );
+}
 
 const HabitGrid = dynamic(() => import("./HabitGrid"), {
   ssr: false,
@@ -135,6 +146,7 @@ const HABIT_CSS = `
           border-radius: 0.875rem;
           transition: border-color 0.22s ease, box-shadow 0.22s ease;
           position: relative;
+          overflow: visible;
         }
         .habit-card:hover { border-color: #282828; box-shadow: 0 0.375rem 2.5rem rgba(0,0,0,0.45); z-index: 50; }
         .habit-card:hover .del-btn    { opacity: 1 !important; }
@@ -259,10 +271,10 @@ const HABIT_CSS = `
           border-radius: 0.375rem; font-size: 0.75rem;
           font-family: var(--font-mono), monospace;
           white-space: nowrap; opacity: 0; pointer-events: none;
-          transition: all 0.2s ease; z-index: 9999999;
+          transition: all 0.2s ease; z-index: 99999;
           box-shadow: 0 0.25rem 0.75rem var(--shadow-alpha);
         }
-        .pill-container:hover { z-index: 100; }
+        .pill-container:hover { z-index: 9999; }
         .pill-container:hover .tooltip { opacity: 1; transform: translateX(-50%) translateY(-0.5rem); }
         .tooltip::after {
           content: ''; position: absolute; top: 100%; left: 50%;
@@ -278,6 +290,27 @@ const HABIT_CSS = `
 
         ::-webkit-scrollbar { height: 0.25rem; width: 0.25rem; background: var(--bg-base); }
         ::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 0.25rem; }
+
+        .tip-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+        .tip-wrap .tip {
+          position: absolute; bottom: calc(100% + 6px); left: 50%;
+          transform: translateX(-50%) translateY(2px);
+          background: var(--bg-surface); border: 1px solid var(--border-main);
+          color: var(--text-main); padding: 4px 8px; border-radius: 6px;
+          font-size: 11px; font-family: var(--font-mono), monospace;
+          white-space: nowrap; opacity: 0; pointer-events: none;
+          transition: opacity 0.15s ease, transform 0.15s ease;
+          z-index: 99999; box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+        .tip-wrap .tip::after {
+          content: ''; position: absolute; top: 100%; left: 50%;
+          transform: translateX(-50%);
+          border: 4px solid transparent; border-top-color: var(--border-main);
+        }
+        .tip-wrap:hover .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .tip-wrap .tip.tip-down { bottom: auto; top: calc(100% + 6px); transform: translateX(-50%) translateY(-2px); }
+        .tip-wrap .tip.tip-down::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: var(--border-main); }
+        .tip-wrap:hover .tip.tip-down { transform: translateX(-50%) translateY(0); }
 `;
 
 // ---------------------------------------------------------------------------
@@ -310,18 +343,34 @@ export default function HabitTracker() {
   const habitsCacheRef = useRef<Map<string, Habit[]>>(new Map());
   const activeHabitsKeyRef = useRef<string | null>(null);
   const viewKeyRef = useRef<string | null>(null);
-  // Debounce rapid cell clicks: maps "habitId-dayIdx" → pending timeout id.
-  // The Supabase mutation fires only after 600 ms of inactivity on that cell.
   const mutationDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Notes cache: key = "habitId:YYYY-MM-DD" → note text
+  const notesCacheRef = useRef<Map<string, string>>(new Map());
+
+  // Notes state — for desktop popover
+  const [notePopover, setNotePopover] = useState<{ habitId: string; date: string; x: number; y: number } | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   // Mobile-only state --------------------------------------------------------
   const [selectedHabit, setSelectedHabit] = useState<Habit | null>(null);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const [sheetDeleteConfirm, setSheetDeleteConfirm] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sheetNoteText, setSheetNoteText] = useState("");
 
   // Desktop habit delete confirmation state ---------------------------------
   const [habitToDelete, setHabitToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  // Sort mode: "manual" | "streak" | "pct"
+  const [sortMode, setSortMode] = useState<"manual" | "streak" | "pct">("manual");
+
+  // Color palette for habit color coding
+  const HABIT_COLORS = [
+    "#4ade80", "#60a5fa", "#f472b6", "#fb923c",
+    "#a78bfa", "#34d399", "#fbbf24", "#f87171",
+    "#38bdf8", "#e879f9", "#84cc16", "#fb7185",
+  ];
 
   const dim = useMemo(() => getDaysInMonth(month, year), [month, year]);
   const dayNums = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
@@ -360,7 +409,10 @@ export default function HabitTracker() {
   const onTap = useCallback((habit: Habit) => {
     setSheetDeleteConfirm(false);
     setSelectedHabit(habit);
-  }, []);
+    // Load today's note for this habit
+    const todayStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+    setSheetNoteText(notesCacheRef.current.get(`${habit.id}:${todayStr}`) ?? "");
+  }, [year, month]);
 
   const onQuickLog = useCallback((habit: Habit) => {
     // Cycle today's status for this habit
@@ -515,7 +567,7 @@ export default function HabitTracker() {
 
       const { data: habitsData } = await supabase
         .from("habits")
-        .select("id, name, category, sort_order")
+        .select("id, name, category, sort_order, created_at, color")
         .eq("user_id", userId)
         .order("sort_order", { ascending: true });
 
@@ -540,6 +592,19 @@ export default function HabitTracker() {
         .gte("date", startDate)
         .lte("date", endDate);
 
+      // Load notes for the month
+      const { data: notesData } = await supabase
+        .from("habit_notes")
+        .select("habit_id, date, note")
+        .in("habit_id", habitIds)
+        .gte("date", startDate)
+        .lte("date", endDate);
+
+      // Populate notes cache
+      (notesData || []).forEach((n: any) => {
+        notesCacheRef.current.set(`${n.habit_id}:${n.date}`, n.note ?? "");
+      });
+
       const logsMap: Record<string, Record<number, number>> = {};
       (logsData || []).forEach((log: any) => {
         if (!logsMap[log.habit_id]) logsMap[log.habit_id] = {};
@@ -548,6 +613,11 @@ export default function HabitTracker() {
       });
 
       const assembled: Habit[] = habitsData.map((h: any) => {
+        // Normalise created_at to a plain date string "YYYY-MM-DD"
+        const createdAt: string = h.created_at
+          ? h.created_at.slice(0, 10)
+          : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+
         const days = Array(31).fill(STATUS.NONE);
         Object.entries(logsMap[h.id] || {}).forEach(([idx, status]) => {
           days[Number(idx)] = status;
@@ -557,6 +627,8 @@ export default function HabitTracker() {
           name: h.name,
           category: h.category || "Uncategorized",
           sort_order: h.sort_order,
+          createdAt,
+          color: h.color ?? undefined,
           days,
         };
       });
@@ -678,12 +750,15 @@ export default function HabitTracker() {
           ? `temp-${crypto.randomUUID()}`
           : `temp-${Math.random().toString(36).slice(2)}`;
       const sortOrder = habits.length;
+      const todayStr = new Date().toISOString().slice(0, 10);
       const optimistic: Habit = {
         id: tempId,
         name,
         category,
         days: Array(31).fill(STATUS.NONE),
         sort_order: sortOrder,
+        createdAt: todayStr,
+        color: undefined,
       };
 
       // 1. Show immediately -- no waiting on network
@@ -718,6 +793,49 @@ export default function HabitTracker() {
     setExpandedCalendar((cur) => (cur === id ? null : cur));
     if (user) await supabaseRef.current.from("habits").delete().eq("id", id);
   }, [user]);
+
+  const updateHabitColor = useCallback(async (id: string, color: string | null) => {
+    setHabits((prev) => prev.map((h) => h.id === id ? { ...h, color: color ?? undefined } : h));
+    if (user) {
+      await supabaseRef.current.from("habits").update({ color }).eq("id", id);
+    }
+  }, [user]);
+
+  // -------------------------------------------------------------------------
+  // Notes
+  // -------------------------------------------------------------------------
+  const openNotePopover = useCallback((habitId: string, date: string, x: number, y: number) => {
+    const existing = notesCacheRef.current.get(`${habitId}:${date}`) ?? "";
+    setNoteText(existing);
+    setNotePopover({ habitId, date, x, y });
+  }, []);
+
+  const saveNote = useCallback(async (habitId: string, date: string, text: string) => {
+    const key = `${habitId}:${date}`;
+    const trimmed = text.trim();
+    setNoteSaving(true);
+    if (trimmed) {
+      notesCacheRef.current.set(key, trimmed);
+      if (user) {
+        await supabaseRef.current.from("habit_notes").upsert(
+          { habit_id: habitId, date, note: trimmed, user_id: user.id },
+          { onConflict: "habit_id,date" }
+        );
+      }
+    } else {
+      notesCacheRef.current.delete(key);
+      if (user) {
+        await supabaseRef.current.from("habit_notes").delete()
+          .eq("habit_id", habitId).eq("date", date);
+      }
+    }
+    setNoteSaving(false);
+    setNotePopover(null);
+  }, [user]);
+
+  const getNoteForCell = useCallback((habitId: string, date: string): string => {
+    return notesCacheRef.current.get(`${habitId}:${date}`) ?? "";
+  }, []);
 
   // Desktop-only: opens the confirmation modal instead of deleting directly.
   // Mobile already has its own 2-step confirm inside the bottom sheet.
@@ -834,14 +952,17 @@ export default function HabitTracker() {
 
   const habitStats = useMemo(() => {
     const stats: Record<string, { streak: number; pct: number }> = {};
+    // For the current month pass today's 0-based index so streak starts from today.
+    // For past months pass undefined so it falls back to the last day of that month.
+    const todayIdx = isCurrent ? today - 1 : undefined;
     habits.forEach((habit) => {
       stats[habit.id] = {
-        streak: getStreak(habit.days, dim),
+        streak: getStreak(habit.days, dim, todayIdx),
         pct: getPct(habit.days, dim),
       };
     });
     return stats;
-  }, [habits, dim]);
+  }, [habits, dim, isCurrent, today]);
 
   const categoryStats = useMemo(() => {
     const stats: Record<string, { activeStreaks: number; avgPct: number }> = {};
@@ -860,6 +981,46 @@ export default function HabitTracker() {
     });
     return stats;
   }, [groupedHabits, habitStats]);
+
+  // -------------------------------------------------------------------------
+  // Sort groupedHabits by sortMode
+  // -------------------------------------------------------------------------
+  const sortedGroupedHabits = useMemo(() => {
+    if (sortMode === "manual") return groupedHabits;
+    const result: Record<string, typeof habits> = {};
+    Object.entries(groupedHabits).forEach(([cat, catHabits]) => {
+      result[cat] = [...catHabits].sort((a, b) => {
+        const sa = habitStats[a.id];
+        const sb = habitStats[b.id];
+        if (sortMode === "streak") return (sb?.streak ?? 0) - (sa?.streak ?? 0);
+        return (sb?.pct ?? 0) - (sa?.pct ?? 0);
+      });
+    });
+    return result;
+  }, [groupedHabits, habitStats, sortMode]);
+
+  // -------------------------------------------------------------------------
+  // Weekly summary banner
+  // -------------------------------------------------------------------------
+  const weeklySummary = useMemo(() => {
+    if (!isCurrent) return null;
+    const total = habits.length;
+    if (total === 0) return null;
+    // "on track" = at least one done/partial in the current week window
+    const weekStart = today - (now.getDay() === 0 ? 6 : now.getDay() - 1);
+    let onTrack = 0;
+    habits.forEach((h) => {
+      for (let d = Math.max(0, weekStart - 1); d < today; d++) {
+        if (h.days[d] === STATUS.DONE || h.days[d] === STATUS.PARTIAL) {
+          onTrack++;
+          break;
+        }
+      }
+    });
+    const allGood = onTrack === total;
+    const pct = Math.round((onTrack / total) * 100);
+    return { onTrack, total, allGood, pct };
+  }, [habits, isCurrent, today, now]);
 
   // -------------------------------------------------------------------------
   // Drag & drop
@@ -933,11 +1094,14 @@ export default function HabitTracker() {
 
   if (habits.length === 0) {
     return (
-      <EmptyState
-        isMobile={isMobile}
-        onAdd={insertHabit}
-        onAddSuggested={insertHabit}
-      />
+      <>
+        {!isMobile && <OnboardingTour />}
+        <EmptyState
+          isMobile={isMobile}
+          onAdd={insertHabit}
+          onAddSuggested={insertHabit}
+        />
+      </>
     );
   }
 
@@ -949,43 +1113,40 @@ export default function HabitTracker() {
   const monthNavEl = (
     <div
       className="month-nav-pill-wrap"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-main)",
-        borderRadius: 9999,
-        padding: "4px 10px",
-      }}
+      style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 9999, padding: "4px 10px" }}
     >
-      <button
-        className="nav-btn"
-        onClick={prevMonth}
-        style={{ width: 24, height: 24, borderRadius: 9999 }}
-      >
-        <ChevronLeft size={12} />
-      </button>
-      <span
-        style={{
-          fontFamily: "var(--font-mono), monospace",
-          fontSize: 10,
-          color: "var(--text-muted)",
-          letterSpacing: "0.1em",
-          minWidth: 80,
-          textAlign: "center",
-          fontWeight: 600,
-        }}
-      >
+      {/* Sort buttons */}
+      {(["manual", "streak", "pct"] as const).map((mode) => (
+        <Tip key={mode} label={mode === "manual" ? "Manual order" : mode === "streak" ? "Sort by streak" : "Sort by rate"} down>
+          <button
+            className="nav-btn"
+            onClick={() => setSortMode(mode)}
+            style={{
+              width: 24, height: 24, borderRadius: 9999,
+              background: sortMode === mode ? "rgba(201,162,39,0.15)" : "transparent",
+              border: sortMode === mode ? "1px solid rgba(201,162,39,0.4)" : "1px solid transparent",
+              color: sortMode === mode ? "var(--accent)" : "var(--text-muted)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            {mode === "manual" ? <ArrowUpDown size={11} /> : mode === "streak" ? <Flame size={11} /> : <BarChart2 size={11} />}
+          </button>
+        </Tip>
+      ))}
+      <div style={{ width: 1, height: 14, background: "var(--border-main)", margin: "0 2px" }} />
+      <Tip label="Previous month" down>
+        <button className="nav-btn" onClick={prevMonth} style={{ width: 24, height: 24, borderRadius: 9999 }}>
+          <ChevronLeft size={12} />
+        </button>
+      </Tip>
+      <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.1em", minWidth: 80, textAlign: "center", fontWeight: 600 }}>
         {MONTHS[month].toUpperCase()} {year}
       </span>
-      <button
-        className="nav-btn"
-        onClick={nextMonth}
-        style={{ width: 24, height: 24, borderRadius: 9999 }}
-      >
-        <ChevronRight size={12} />
-      </button>
+      <Tip label="Next month" down>
+        <button className="nav-btn" onClick={nextMonth} style={{ width: 24, height: 24, borderRadius: 9999 }}>
+          <ChevronRight size={12} />
+        </button>
+      </Tip>
     </div>
   );
 
@@ -1012,6 +1173,91 @@ export default function HabitTracker() {
     >
       <style>{HABIT_CSS}</style>
 
+      {/* Onboarding tour — first-time desktop users only */}
+      {!isMobile && <OnboardingTour />}
+      {/* -------------------------------------------------------------------- */}
+      {/* Note popover — desktop right-click on cell                           */}
+      {/* -------------------------------------------------------------------- */}
+      {notePopover && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setNotePopover(null)}
+            style={{ position: "fixed", inset: 0, zIndex: 399 }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: Math.min(notePopover.x, window.innerWidth - 280),
+              top: Math.min(notePopover.y, window.innerHeight - 160),
+              zIndex: 400,
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-main)",
+              borderRadius: 12,
+              padding: 14,
+              width: 260,
+              boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", letterSpacing: "0.12em" }}>
+              NOTE · {notePopover.date}
+            </div>
+            <textarea
+              autoFocus
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Add a note..."
+              rows={3}
+              style={{
+                background: "var(--bg-base, #0e0e0e)",
+                border: "1px solid var(--border-main)",
+                borderRadius: 8,
+                color: "var(--text-main)",
+                fontFamily: "var(--font-body), sans-serif",
+                fontSize: 13,
+                padding: "8px 10px",
+                resize: "none",
+                outline: "none",
+                width: "100%",
+                boxSizing: "border-box",
+                lineHeight: 1.5,
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setNotePopover(null);
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  saveNote(notePopover.habitId, notePopover.date, noteText);
+                }
+              }}
+            />
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => setNotePopover(null)}
+                style={{
+                  flex: 1, padding: "6px", borderRadius: 7,
+                  border: "1px solid var(--border-main)", background: "transparent",
+                  color: "var(--text-muted)", cursor: "pointer", fontSize: 11,
+                  fontFamily: "var(--font-body), sans-serif",
+                }}
+              >Cancel</button>
+              <button
+                onClick={() => saveNote(notePopover.habitId, notePopover.date, noteText)}
+                disabled={noteSaving}
+                style={{
+                  flex: 2, padding: "6px", borderRadius: 7,
+                  border: "none", background: "var(--accent)",
+                  color: "var(--bg-base)", cursor: "pointer", fontSize: 11,
+                  fontWeight: 600, fontFamily: "var(--font-body), sans-serif",
+                  opacity: noteSaving ? 0.6 : 1,
+                }}
+              >{noteSaving ? "Saving..." : noteText.trim() ? "Save" : "Clear"}</button>
+            </div>
+          </div>
+        </>
+      )}
+
       <div
         className="page-container page-enter"
         style={{ maxWidth: 1340, margin: "0 auto", padding: "0px 36px 88px" }}
@@ -1021,88 +1267,55 @@ export default function HabitTracker() {
         {/* ------------------------------------------------------------------ */}
         {/* On mobile, the month nav is portalled into the floating-nav header  */}
         {!isMobile && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              marginBottom: 32,
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div
-              className="month-nav-container"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-main)",
-                borderRadius: 12,
-                padding: "8px 12px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-              }}
-            >
-              <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}>
-                <ChevronLeft size={14} />
-              </button>
-              <span
-                className="month-nav-text"
-                style={{
-                  fontFamily: "var(--font-mono), monospace",
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  letterSpacing: "0.1em",
-                  minWidth: 100,
-                  textAlign: "center",
-                  fontWeight: 600,
-                }}
-              >
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 32, gap: 10, flexWrap: "wrap" }}>
+            {/* Sort toggle */}
+            <div data-tour="sort-buttons" className="month-nav-container" style={{ display: "flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12, padding: "4px", gap: 2, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+              {(["manual", "streak", "pct"] as const).map((mode) => (
+                <Tip key={mode} label={mode === "manual" ? "Manual order" : mode === "streak" ? "Sort by streak" : "Sort by rate"}>
+                  <button
+                    className="nav-btn"
+                    onClick={() => setSortMode(mode)}
+                    style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      background: sortMode === mode ? "rgba(201,162,39,0.15)" : "transparent",
+                      border: sortMode === mode ? "1px solid rgba(201,162,39,0.4)" : "1px solid transparent",
+                      color: sortMode === mode ? "var(--accent)" : "var(--text-muted)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}
+                  >
+                    {mode === "manual" ? <ArrowUpDown size={13} /> : mode === "streak" ? <Flame size={13} /> : <BarChart2 size={13} />}
+                  </button>
+                </Tip>
+              ))}
+            </div>
+            {/* Month nav */}
+            <div className="month-nav-container" style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12, padding: "8px 12px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+              <Tip label="Previous month">
+                <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}><ChevronLeft size={14} /></button>
+              </Tip>
+              <span className="month-nav-text" style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", minWidth: 100, textAlign: "center", fontWeight: 600 }}>
                 {MONTHS[month].toUpperCase()} {year}
               </span>
-              <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}>
-                <ChevronRight size={14} />
-              </button>
+              <Tip label="Next month">
+                <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}><ChevronRight size={14} /></button>
+              </Tip>
             </div>
           </div>
         )}
 
-        {/* Mobile: portal month nav into floating-nav slot */}
+        {/* Mobile: portal month nav only */}
         {isMobile && mounted && <MonthNavPortal>{monthNavEl}</MonthNavPortal>}
 
         {/* ------------------------------------------------------------------ */}
         {/* Legend (desktop only — mobile legend is in HabitGrid)               */}
         {/* ------------------------------------------------------------------ */}
         {!isMobile && (
-          <div
-            className="legend-container"
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 24,
-              marginBottom: 20,
-            }}
-          >
+          <div className="legend-container" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 24, marginBottom: 20 }}>
             {[STATUS.DONE, STATUS.PARTIAL, STATUS.MISSED].map((s) => (
               <div key={s} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: S[s].bg,
-                    boxShadow: S[s].glow,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: "var(--text-muted)",
-                    letterSpacing: "0.14em",
-                    fontFamily: "var(--font-mono), monospace",
-                  }}
-                >
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: S[s].bg, boxShadow: S[s].glow }} />
+                <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.14em", fontFamily: "var(--font-mono), monospace" }}>
                   {S[s].label.toUpperCase()}
                 </span>
               </div>
@@ -1113,6 +1326,7 @@ export default function HabitTracker() {
         {/* ------------------------------------------------------------------ */}
         {/* Scrollable grid                                                     */}
         {/* ------------------------------------------------------------------ */}
+        <div data-tour="habit-grid">
         <HabitGrid
           isMobile={isMobile}
           touchY={touchY}
@@ -1126,7 +1340,7 @@ export default function HabitTracker() {
           isFutureMonth={isFutureMonth}
           onDragEnd={onDragEnd}
           sortedCategories={sortedCategories}
-          groupedHabits={groupedHabits}
+          groupedHabits={sortedGroupedHabits}
           collapsedCategories={collapsedCategories}
           editingCategory={editingCategory}
           editCategoryName={editCategoryName}
@@ -1148,10 +1362,15 @@ export default function HabitTracker() {
           hoveredCellRef={hoveredCellRef}
           onTap={onTap}
           onQuickLog={onQuickLog}
+          updateHabitColor={updateHabitColor}
+          habitColors={HABIT_COLORS}
+          openNotePopover={openNotePopover}
+          getNoteForCell={getNoteForCell}
         />
+        </div>
 
         {/* Add habit input */}
-        <div style={{ position: "relative" }}>
+        <div data-tour="add-habit" style={{ position: "relative" }}>
           <HabitComposer isMobile={isMobile} onAdd={insertHabit} />
         </div>
       </div>
@@ -1241,7 +1460,7 @@ export default function HabitTracker() {
                         padding: "3px 8px", borderRadius: 9999,
                         border: "1px solid rgba(201,162,39,0.25)",
                       }}>
-                        🔥 {sheetStreak}d
+                      <Flame size={10} color="var(--accent)" /> {sheetStreak}d
                       </span>
                     )}
                     <span style={{
@@ -1358,7 +1577,83 @@ export default function HabitTracker() {
                 {/* Divider */}
                 <div style={{ height: 1, background: "var(--border-main)", marginBottom: 16 }} />
 
-                {/* Edit + Delete */}
+                {/* Color picker */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", letterSpacing: "0.12em", marginBottom: 8 }}>
+                    HABIT COLOR
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {HABIT_COLORS.map((c) => (
+                      <div
+                        key={c}
+                        onClick={() => updateHabitColor(sheetHabit.id, sheetHabit.color === c ? null : c)}
+                        style={{
+                          width: 24, height: 24, borderRadius: "50%", background: c,
+                          cursor: "pointer", flexShrink: 0,
+                          border: sheetHabit.color === c ? "2.5px solid #fff" : "2.5px solid transparent",
+                          boxShadow: sheetHabit.color === c ? `0 0 8px ${c}88` : "none",
+                          transition: "transform 0.12s, box-shadow 0.12s",
+                        }}
+                      />
+                    ))}
+                    {sheetHabit.color && (
+                      <div
+                        onClick={() => updateHabitColor(sheetHabit.id, null)}
+                        style={{
+                          width: 24, height: 24, borderRadius: "50%", cursor: "pointer",
+                          border: "1px dashed var(--border-focus)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, color: "var(--text-muted)",
+                        }}
+                      >✕</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div style={{ height: 1, background: "var(--border-main)", marginBottom: 16 }} />
+
+                {/* Today's note */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontFamily: "var(--font-mono), monospace", color: "var(--text-muted)", letterSpacing: "0.12em", marginBottom: 8 }}>
+                    NOTE · TODAY
+                  </div>
+                  <textarea
+                    value={sheetNoteText}
+                    onChange={(e) => setSheetNoteText(e.target.value)}
+                    onBlur={async () => {
+                      const todayStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(today).padStart(2, "0")}`;
+                      if (sheetHabit) {
+                        const trimmed = sheetNoteText.trim();
+                        const key = `${sheetHabit.id}:${todayStr}`;
+                        if (trimmed) {
+                          notesCacheRef.current.set(key, trimmed);
+                          if (user) {
+                            supabaseRef.current.from("habit_notes").upsert(
+                              { habit_id: sheetHabit.id, date: todayStr, note: trimmed, user_id: user.id },
+                              { onConflict: "habit_id,date" }
+                            ).then();
+                          }
+                        } else {
+                          notesCacheRef.current.delete(key);
+                          if (user) {
+                            supabaseRef.current.from("habit_notes").delete()
+                              .eq("habit_id", sheetHabit.id).eq("date", todayStr).then();
+                          }
+                        }
+                      }
+                    }}
+                    placeholder="Add a note for today..."
+                    rows={2}
+                    style={{
+                      width: "100%", background: "var(--bg-base, #0e0e0e)",
+                      border: "1px solid var(--border-main)", borderRadius: 10,
+                      color: "var(--text-main)", fontFamily: "var(--font-body), sans-serif",
+                      fontSize: 13, padding: "10px 12px", resize: "none",
+                      outline: "none", boxSizing: "border-box", lineHeight: 1.5,
+                    }}
+                  />
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={() => setSelectedHabit(null)}

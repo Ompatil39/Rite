@@ -4,11 +4,19 @@ export function getDaysInMonth(m: number, y: number): number {
   return new Date(y, m + 1, 0).getDate();
 }
 
-export function getStreak(days: number[], dim: number): number {
+export function getStreak(days: number[], dim: number, todayIdx?: number): number {
+  // Start from today (or end of month for past months), skip today if not yet logged
+  const start = todayIdx !== undefined ? todayIdx : dim - 1;
   let s = 0;
-  for (let d = dim - 1; d >= 0; d--) {
-    if (days[d] === STATUS.DONE) s++;
-    else break;
+  for (let d = start; d >= 0; d--) {
+    if (days[d] === STATUS.DONE || days[d] === STATUS.PARTIAL) {
+      s++;
+    } else if (days[d] === STATUS.NONE && d === start) {
+      // Today not logged yet — just skip it and check yesterday
+      continue;
+    } else {
+      break;
+    }
   }
   return s;
 }

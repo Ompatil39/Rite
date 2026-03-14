@@ -94,7 +94,7 @@ export default function FloatingNavLayout({ children }: { children: React.ReactN
           margin: 0
         }}>RITE</h1>
         <p style={{ fontSize: 10, letterSpacing: "0.3em", color: "var(--text-muted)", textTransform: "uppercase", fontFamily: "var(--font-mono), monospace", marginTop: 6, margin: "6px 0 0 0" }}>
-          Premium Tracking
+          BUILD. TRACK. BECOME.
         </p>
       </div>
 

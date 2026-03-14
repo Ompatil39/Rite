@@ -148,7 +148,7 @@ export default function EmptyState({
           style={{ textAlign: "center", marginBottom: 40 }}
         >
           <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            No habits yet. Add one below or pick a suggestion.
+            Your streak starts today. Choose a Discipline or forge your own.
           </p>
         </motion.div>
 
@@ -169,7 +169,7 @@ export default function EmptyState({
               marginBottom: 4,
             }}
           >
-            Suggestions
+            STARTER DISCIPLINES
           </span>
           {SUGGESTED_HABITS.map((h) => (
             <button
@@ -192,7 +192,7 @@ export default function EmptyState({
           <div className={`es-add-wrap${inputFocused ? " focused" : ""}`}>
             <input
               className="es-add-input"
-              placeholder="Cultivate a new habit..."
+              placeholder="Name your ritual... "
               value={newHabit}
               maxLength={MAX_HABIT_NAME_LENGTH}
               onChange={(e) => setNewHabit(clampHabitName(e.target.value))}
@@ -202,7 +202,7 @@ export default function EmptyState({
             />
             <input
               className="es-add-input es-add-input-cat"
-              placeholder="Category"
+              placeholder="Tag it"
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value)}
               onFocus={() => setInputFocused(true)}

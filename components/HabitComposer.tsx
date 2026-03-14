@@ -38,7 +38,7 @@ function HabitComposer({ isMobile, onAdd }: HabitComposerProps) {
       <div className={`add-wrap${inputFocused ? " focused" : ""}`}>
         <input
           className="add-input"
-          placeholder="Cultivate a new habit..."
+          placeholder="Name your ritual... "
           value={newHabit}
           maxLength={MAX_HABIT_NAME_LENGTH}
           onChange={(e) => setNewHabit(clampHabitName(e.target.value))}
@@ -48,7 +48,7 @@ function HabitComposer({ isMobile, onAdd }: HabitComposerProps) {
         />
         <input
           className="add-input add-input-cat"
-          placeholder="Category (optional)"
+          placeholder="Tag it"
           value={newCategory}
           onChange={(e) => setNewCategory(e.target.value)}
           onFocus={() => setInputFocused(true)}

@@ -521,12 +521,12 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
                   <motion.div
                     className={isToday ? "pill" : ""}
                     onClick={(e) => {
-                      if (!isFuture) cycleStatus(habit.id, idx, e.shiftKey, true);
+                      if (isToday) cycleStatus(habit.id, idx, e.shiftKey, true);
                     }}
                     onTouchEnd={(e) => {
-                      if (!isFuture) { e.preventDefault(); cycleStatus(habit.id, idx, false, true); }
+                      if (isToday) { e.preventDefault(); cycleStatus(habit.id, idx, false, true); }
                     }}
-                    onMouseEnter={() => { hoveredCellRef.current = { hid: habit.id, idx }; }}
+                    onMouseEnter={() => { if (isToday) hoveredCellRef.current = { hid: habit.id, idx }; }}
                     onMouseLeave={() => { hoveredCellRef.current = null; }}
                     initial={false}
                     animate={{

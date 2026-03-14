@@ -42,6 +42,10 @@ const DeleteCategoryModal = dynamic(() => import("./DeleteCategoryModal"), {
   ssr: false,
 });
 
+const DeleteHabitModal = dynamic(() => import("./DeleteHabitModal"), {
+  ssr: false,
+});
+
 // ---------------------------------------------------------------------------
 // MonthNavPortal — renders children into #month-nav-slot only after mount
 // Avoids hydration mismatch: never touches the DOM during SSR
@@ -315,6 +319,9 @@ export default function HabitTracker() {
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const [sheetDeleteConfirm, setSheetDeleteConfirm] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Desktop habit delete confirmation state ---------------------------------
+  const [habitToDelete, setHabitToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const dim = useMemo(() => getDaysInMonth(month, year), [month, year]);
   const dayNums = useMemo(() => Array.from({ length: dim }, (_, i) => i + 1), [dim]);
@@ -712,6 +719,13 @@ export default function HabitTracker() {
     if (user) await supabaseRef.current.from("habits").delete().eq("id", id);
   }, [user]);
 
+  // Desktop-only: opens the confirmation modal instead of deleting directly.
+  // Mobile already has its own 2-step confirm inside the bottom sheet.
+  const requestDeleteHabit = useCallback((id: string) => {
+    const habit = habits.find((h) => h.id === id);
+    if (habit) setHabitToDelete({ id: habit.id, name: habit.name });
+  }, [habits]);
+
   // -------------------------------------------------------------------------
   // Category management
   // -------------------------------------------------------------------------
@@ -894,6 +908,23 @@ export default function HabitTracker() {
 
   // cssStyles moved to module-level constant HABIT_CSS above the component.
 
+  // sheetWeek must be above early returns — useMemo is a hook and cannot
+  // appear after a conditional return.
+  const sheetWeek = useMemo(() => {
+    const days: { d: number; letter: string; isToday: boolean; isFuture: boolean }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(year, month, today - i);
+      const inMonth = date.getMonth() === month;
+      days.push({
+        d: inMonth ? date.getDate() : -1,
+        letter: ["S","M","T","W","T","F","S"][date.getDay()],
+        isToday: i === 0,
+        isFuture: false,
+      });
+    }
+    return days;
+  }, [today, month, year]);
+
   // -------------------------------------------------------------------------
   // Early returns (placed after all hooks to satisfy Rules of Hooks)
   // -------------------------------------------------------------------------
@@ -968,21 +999,7 @@ export default function HabitTracker() {
   const sheetPct = sheetHabit ? (habitStats[sheetHabit.id]?.pct ?? 0) : 0;
   const sheetDateLabel = `${["SUN","MON","TUE","WED","THU","FRI","SAT"][new Date(year, month, today).getDay()]} ${String(today).padStart(2,"0")} ${MONTHS[month].substring(0,3).toUpperCase()}`;
 
-  // Build week for sheet
-  const sheetWeek = (() => {
-    const days: { d: number; letter: string; isToday: boolean; isFuture: boolean }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(year, month, today - i);
-      const inMonth = date.getMonth() === month;
-      days.push({
-        d: inMonth ? date.getDate() : -1,
-        letter: ["S","M","T","W","T","F","S"][date.getDay()],
-        isToday: i === 0,
-        isFuture: false,
-      });
-    }
-    return days;
-  })();
+  // Build week for sheet — moved above early returns (see above).
 
   return (
     <div
@@ -1123,7 +1140,7 @@ export default function HabitTracker() {
           habitStats={habitStats}
           expandedCalendar={expandedCalendar}
           setExpandedCalendar={setExpandedCalendar}
-          removeHabit={removeHabit}
+          removeHabit={requestDeleteHabit}
           cycleStatus={cycleStatus}
           pulsingCell={pulsingCell}
           user={user}
@@ -1145,6 +1162,16 @@ export default function HabitTracker() {
         habitCount={categoryToDelete ? (groupedHabits[categoryToDelete]?.length ?? 0) : 0}
         onCancel={() => setCategoryToDelete(null)}
         onConfirm={executeDeleteCategory}
+      />
+
+      {/* Delete habit modal (desktop only — mobile uses bottom sheet confirm) */}
+      <DeleteHabitModal
+        habitToDelete={habitToDelete}
+        onCancel={() => setHabitToDelete(null)}
+        onConfirm={() => {
+          if (habitToDelete) removeHabit(habitToDelete.id);
+          setHabitToDelete(null);
+        }}
       />
 
       {/* -------------------------------------------------------------------- */}

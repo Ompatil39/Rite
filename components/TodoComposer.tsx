@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useRef } from "react";
 import { Plus } from "lucide-react";
 
 type TodoComposerProps = {
@@ -8,24 +8,39 @@ type TodoComposerProps = {
 };
 
 function TodoComposer({ onAdd }: TodoComposerProps) {
-  const [text, setText] = useState("");
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  // Guard against multiple simultaneous submissions. Using a ref (not state)
+  // so toggling it never triggers a re-render.
+  const isSubmittingRef = useRef(false);
 
-  const syncComposerHeight = (element: HTMLTextAreaElement | null) => {
-    if (!element) return;
-    element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+  const syncHeight = (element: HTMLTextAreaElement) => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      element.style.height = "0px";
+      element.style.height = `${Math.min(element.scrollHeight, 120)}px`;
+    });
   };
 
-  useEffect(() => {
-    syncComposerHeight(composerRef.current);
-  }, [text]);
-
-  const handleAdd = () => {
-    const value = text.trim();
+  const handleAdd = async () => {
+    if (isSubmittingRef.current) return;
+    const el = composerRef.current;
+    if (!el) return;
+    const value = el.value.trim();
     if (!value) return;
-    void onAdd(value);
-    setText("");
+
+    isSubmittingRef.current = true;
+    // Clear the textarea immediately so the UI feels instant
+    el.value = "";
+    el.style.height = "0px";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+
+    try {
+      await onAdd(value);
+    } finally {
+      isSubmittingRef.current = false;
+    }
   };
 
   return (
@@ -43,16 +58,12 @@ function TodoComposer({ onAdd }: TodoComposerProps) {
     >
       <textarea
         ref={composerRef}
-        value={text}
         rows={1}
-        onChange={(e) => {
-          setText(e.target.value);
-          syncComposerHeight(e.currentTarget);
-        }}
+        onChange={(e) => syncHeight(e.currentTarget)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            handleAdd();
+            void handleAdd();
           }
         }}
         placeholder="What needs to be done?"
@@ -74,7 +85,7 @@ function TodoComposer({ onAdd }: TodoComposerProps) {
         }}
       />
       <button
-        onClick={handleAdd}
+        onClick={() => void handleAdd()}
         style={{
           width: 38,
           height: 38,

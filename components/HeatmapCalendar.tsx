@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "motion/react";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
@@ -28,13 +28,21 @@ export default function HeatmapCalendar({
   heatmapLogs,
   setHeatmapLogs,
 }: HeatmapCalendarProps) {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!heatmapLogs[habitId]);
+  // Track whether we've already kicked off a fetch for this habitId so that
+  // re-renders (e.g. from setHeatmapLogs updating the parent) never trigger
+  // a second network request. Previously `heatmapLogs` was in the dep array,
+  // so every other habit expanding caused this effect to re-run.
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
-    if (!user || heatmapLogs[habitId]) {
+    // Already have data or already fetching — bail immediately
+    if (!user || heatmapLogs[habitId] || fetchedRef.current) {
       setLoading(false);
       return;
     }
+
+    fetchedRef.current = true;
 
     const fetchYearData = async () => {
       const today = new Date();
@@ -61,41 +69,48 @@ export default function HeatmapCalendar({
     };
 
     fetchYearData();
-  }, [habitId, user, supabase, heatmapLogs, setHeatmapLogs]);
+  // Intentionally omitting heatmapLogs — we only need to check it on mount.
+  // Including it caused every sibling habit expansion to re-run this effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [habitId, user, supabase, setHeatmapLogs]);
 
   const logs = heatmapLogs[habitId] || {};
 
-  // Build ~52 weeks of data
-  const today = new Date();
-  const start = new Date(today);
-  start.setDate(start.getDate() - 364);
-  start.setDate(start.getDate() - start.getDay()); // align to Sunday
+  // Memoize the week grid — it only changes when logs or habitId changes,
+  // not on every parent re-render.
+  const { weeks, monthLabels, today } = useMemo(() => {
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - 364);
+    start.setDate(start.getDate() - start.getDay()); // align to Sunday
 
-  const weeks: { date: Date; status: number }[][] = [];
-  let current = new Date(start);
-  let week: { date: Date; status: number }[] = [];
+    const weeks: { date: Date; status: number }[][] = [];
+    let current = new Date(start);
+    let week: { date: Date; status: number }[] = [];
 
-  while (current <= today) {
-    const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
-    week.push({ date: new Date(current), status: logs[dateStr] || 0 });
-    if (week.length === 7) {
-      weeks.push(week);
-      week = [];
+    while (current <= today) {
+      const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+      week.push({ date: new Date(current), status: logs[dateStr] || 0 });
+      if (week.length === 7) {
+        weeks.push(week);
+        week = [];
+      }
+      current.setDate(current.getDate() + 1);
     }
-    current.setDate(current.getDate() + 1);
-  }
-  if (week.length > 0) weeks.push(week);
+    if (week.length > 0) weeks.push(week);
 
-  // Month label per column
-  let lastMonth = -1;
-  const monthLabels = weeks.map((w) => {
-    const m = w[0]?.date.getMonth();
-    if (m !== undefined && m !== lastMonth) {
-      lastMonth = m;
-      return MONTHS[m].slice(0, 3);
-    }
-    return "";
-  });
+    let lastMonth = -1;
+    const monthLabels = weeks.map((w) => {
+      const m = w[0]?.date.getMonth();
+      if (m !== undefined && m !== lastMonth) {
+        lastMonth = m;
+        return MONTHS[m].slice(0, 3);
+      }
+      return "";
+    });
+
+    return { weeks, monthLabels, today };
+  }, [logs]);
 
   return (
     <motion.div

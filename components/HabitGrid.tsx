@@ -61,6 +61,16 @@ const HeatmapCalendar = dynamic(() => import("./HeatmapCalendar"), {
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // ---------------------------------------------------------------------------
+// Static style objects for MobileHabitRow — defined at module level so the
+// same object reference is reused every render instead of allocating a fresh
+// object per cell per render. This reduces GC pressure at 60fps.
+// ---------------------------------------------------------------------------
+const PILL_COL_STYLE = { display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 2 };
+const PILL_ROW_STYLE = { display: "flex", gap: 3, alignItems: "flex-end" };
+const STREAK_DOT_STYLE = { width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", display: "inline-block", flexShrink: 0 };
+const PILL_BASE_STYLE = { borderRadius: 9999, flexShrink: 0, overflow: "hidden", position: "relative" as const };
+
+// ---------------------------------------------------------------------------
 // Mobile-only: MobileHabitRow (React.memo per spec)
 // ---------------------------------------------------------------------------
 type MobileHabitRowProps = {
@@ -220,7 +230,7 @@ const MobileHabitRow = memo(function MobileHabitRow({
                 color: "var(--text-muted)",
               }}
             >
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", display: "inline-block", flexShrink: 0 }} />
+              <span style={STREAK_DOT_STYLE} />
               {streak}d
             </span>
           )}
@@ -236,17 +246,17 @@ const MobileHabitRow = memo(function MobileHabitRow({
         </div>
 
         {/* Right: 7 pill cells */}
-        <div style={{ display: "flex", gap: 3, alignItems: "flex-end" }}>
+        <div style={PILL_ROW_STYLE}>
           {weekDays.map((wd, i) => {
             if (wd.d === -1) {
               // Out-of-month placeholder
               return (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <div key={i} style={PILL_COL_STYLE}>
                   <div
                     style={{
+                      ...PILL_BASE_STYLE,
                       width: MOBILE_PILL_W,
                       height: MOBILE_PILL_H,
-                      borderRadius: 9999,
                       background: "transparent",
                       border: "1px solid var(--border-main)",
                       opacity: 0.2,
@@ -264,21 +274,18 @@ const MobileHabitRow = memo(function MobileHabitRow({
             const isNone = cellStatus === STATUS.NONE;
 
             return (
-              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div key={i} style={PILL_COL_STYLE}>
                 <div
                   style={{
+                    ...PILL_BASE_STYLE,
                     width: MOBILE_PILL_W,
                     height: MOBILE_PILL_H,
-                    borderRadius: 9999,
                     background: isNone ? "var(--pill-none, #1c1c1c)" : isMissed ? "var(--status-missed)" : statusInfo.bg,
                     border: `1px solid ${wd.isToday ? statusInfo.border : (isNone ? "var(--pill-none-border, #2a2a2a)" : statusInfo.border)}`,
                     boxShadow: wd.isToday
                       ? `0 0 8px ${statusInfo.bg === "var(--pill-none)" ? "transparent" : statusInfo.bg}55, 0 0 0 1.5px ${statusInfo.border}`
                       : "none",
                     opacity: !wd.isToday && !wd.isFuture ? 0.6 : 1,
-                    flexShrink: 0,
-                    overflow: "hidden",
-                    position: "relative",
                   }}
                 />
                 <span

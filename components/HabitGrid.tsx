@@ -457,6 +457,7 @@ type DesktopHabitRowInnerProps = {
   habitColors: string[];
   openNotePopover: (habitId: string, date: string, x: number, y: number) => void;
   getNoteForCell: (habitId: string, date: string) => string;
+  isFirstHabit?: boolean;
 };
 
 const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
@@ -484,6 +485,7 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
   habitColors,
   openNotePopover,
   getNoteForCell,
+  isFirstHabit = false,
 }: DesktopHabitRowInnerProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const habitColor = habit.color ?? "var(--status-done)";
@@ -535,6 +537,7 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
             {/* Color dot */}
             <Tip label={habit.color ? "Change color" : "Set color"}>
               <div
+                data-tour={isFirstHabit ? "color-dot" : undefined}
                 onClick={() => setShowColorPicker((v) => !v)}
                 style={{
                   width: 8, height: 8, borderRadius: "50%",
@@ -670,6 +673,7 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
                 <motion.div
                   key={d}
                   className="pill-container"
+                  data-tour={isFirstHabit && isToday ? "habit-cell" : undefined}
                   style={{
                     position: "relative",
                     flexShrink: 0,
@@ -1482,6 +1486,7 @@ export default function HabitGrid({
                                                     habitColors={habitColors}
                                                     openNotePopover={openNotePopover}
                                                     getNoteForCell={getNoteForCell}
+                                                    isFirstHabit={catIndex === 0 && hi === 0}
                                                   />
                                                 </div>
                                               )}

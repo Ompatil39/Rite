@@ -154,6 +154,7 @@ export default function EmptyState({
 
         {/* Suggestions */}
         <motion.div
+          data-tour="suggestions"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.25 }}
@@ -189,7 +190,7 @@ export default function EmptyState({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
         >
-          <div className={`es-add-wrap${inputFocused ? " focused" : ""}`}>
+          <div data-tour="add-habit" className={`es-add-wrap${inputFocused ? " focused" : ""}`}>
             <input
               className="es-add-input"
               placeholder="Name your ritual... "

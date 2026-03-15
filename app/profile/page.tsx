@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LogOut, User, Activity, Flame, CheckCircle2, Zap, Calendar } from "lucide-react";
+import { LogOut, User, Activity, Flame, CheckCircle2, Zap, Calendar, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { createClient } from "@/utils/supabase/client";
+import { TOUR_KEY } from "@/components/OnboardingTour";
 
 type StatsPayload = {
   totalHabits: number;
@@ -332,6 +333,11 @@ export default function ProfileDashboard() {
     },
   ];
 
+  const handleReplayTour = () => {
+    localStorage.removeItem(TOUR_KEY);
+    window.location.href = "/";
+  };
+
   return (
     <div
       className="page-enter profile-page"
@@ -522,6 +528,28 @@ export default function ProfileDashboard() {
                 {user?.user_metadata?.full_name || user?.email}
               </p>
             </div>
+            <button
+              onClick={handleReplayTour}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                background: "transparent", color: "var(--text-muted)",
+                border: "1px solid var(--border-main)", padding: "8px 16px",
+                borderRadius: 8, fontSize: 13, fontWeight: 500,
+                cursor: "pointer", transition: "color 0.15s, border-color 0.15s",
+                marginRight: 8,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--accent)";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-muted)";
+                e.currentTarget.style.borderColor = "var(--border-main)";
+              }}
+            >
+              <RotateCcw size={15} />
+              Replay Tour
+            </button>
             <button
               onClick={handleLogout}
               className="welcome-cta"

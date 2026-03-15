@@ -1095,7 +1095,7 @@ export default function HabitTracker() {
   if (habits.length === 0) {
     return (
       <>
-        {!isMobile && <OnboardingTour />}
+        {!isMobile && <OnboardingTour isEmpty={true} />}
         <EmptyState
           isMobile={isMobile}
           onAdd={insertHabit}
@@ -1174,7 +1174,7 @@ export default function HabitTracker() {
       <style>{HABIT_CSS}</style>
 
       {/* Onboarding tour — first-time desktop users only */}
-      {!isMobile && <OnboardingTour />}
+      {!isMobile && <OnboardingTour isEmpty={false} />}
       {/* -------------------------------------------------------------------- */}
       {/* Note popover — desktop right-click on cell                           */}
       {/* -------------------------------------------------------------------- */}
@@ -1271,7 +1271,7 @@ export default function HabitTracker() {
             {/* Sort toggle */}
             <div data-tour="sort-buttons" className="month-nav-container" style={{ display: "flex", alignItems: "center", background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12, padding: "4px", gap: 2, boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               {(["manual", "streak", "pct"] as const).map((mode) => (
-                <Tip key={mode} label={mode === "manual" ? "Manual order" : mode === "streak" ? "Sort by streak" : "Sort by rate"}>
+                <Tip key={mode} label={mode === "manual" ? "Manual order" : mode === "streak" ? "Sort by streak" : "Sort by rate"} down>
                   <button
                     className="nav-btn"
                     onClick={() => setSortMode(mode)}
@@ -1291,13 +1291,13 @@ export default function HabitTracker() {
             </div>
             {/* Month nav */}
             <div className="month-nav-container" style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg-surface)", border: "1px solid var(--border-main)", borderRadius: 12, padding: "8px 12px", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-              <Tip label="Previous month">
+              <Tip label="Previous month" down>
                 <button className="nav-btn" onClick={prevMonth} style={{ width: 28, height: 28 }}><ChevronLeft size={14} /></button>
               </Tip>
               <span className="month-nav-text" style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", minWidth: 100, textAlign: "center", fontWeight: 600 }}>
                 {MONTHS[month].toUpperCase()} {year}
               </span>
-              <Tip label="Next month">
+              <Tip label="Next month" down>
                 <button className="nav-btn" onClick={nextMonth} style={{ width: 28, height: 28 }}><ChevronRight size={14} /></button>
               </Tip>
             </div>

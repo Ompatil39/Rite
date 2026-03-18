@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, memo, useCallback, type MutableRefObject, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -166,6 +167,11 @@ const HeatmapCalendar = dynamic(() => import("./HeatmapCalendar"), {
 // ---------------------------------------------------------------------------
 // Module-level week constant (not computed in render — performance requirement)
 // ---------------------------------------------------------------------------
+function PortalAwareItem({ snapshot, children }: { snapshot: { isDragging: boolean }; children: React.ReactNode }) {
+  if (!snapshot.isDragging || typeof document === "undefined") return <>{children}</>;
+  return createPortal(<>{children}</>, document.body);
+}
+
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // ---------------------------------------------------------------------------
@@ -458,6 +464,7 @@ type DesktopHabitRowInnerProps = {
   openNotePopover: (habitId: string, date: string, x: number, y: number) => void;
   getNoteForCell: (habitId: string, date: string) => string;
   isFirstHabit?: boolean;
+  renameHabit: (id: string, newName: string) => void;
 };
 
 const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
@@ -486,8 +493,12 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
   openNotePopover,
   getNoteForCell,
   isFirstHabit = false,
+  renameHabit,
 }: DesktopHabitRowInnerProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [editNameVal, setEditNameVal] = useState(habit.name);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const habitColor = habit.color ?? "var(--status-done)";
   const pctColor =
     pct >= 80
@@ -505,6 +516,19 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
   const onRemove = useCallback(() => {
     removeHabit(habit.id);
   }, [habit.id, removeHabit]);
+
+  const startEdit = useCallback(() => {
+    setEditNameVal(habit.name);
+    setEditingName(true);
+    setTimeout(() => { editInputRef.current?.select(); }, 30);
+  }, [habit.name]);
+
+  const saveEdit = useCallback(() => {
+    setEditingName(false);
+    if (editNameVal.trim() && editNameVal.trim() !== habit.name) {
+      renameHabit(habit.id, editNameVal.trim());
+    }
+  }, [editNameVal, habit.id, habit.name, renameHabit]);
 
   return (
     <>
@@ -551,27 +575,43 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
               />
             </Tip>
             <div className="habit-name-wrap">
-              <span
-                className="habit-name"
-                style={{
-                  fontSize: 15,
-                  color: "var(--text-main)",
-                  fontWeight: 500,
-                  letterSpacing: "0.01em",
-                  display: "block",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  transition: "color 0.18s",
-                  minWidth: 0,
-                }}
-              >
-                {habit.name}
-              </span>
+              {editingName ? (
+                <input
+                  ref={editInputRef}
+                  value={editNameVal}
+                  maxLength={60}
+                  onChange={(e) => setEditNameVal(e.target.value)}
+                  onBlur={saveEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
+                    if (e.key === "Escape") setEditingName(false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: 15, fontWeight: 500, letterSpacing: "0.01em",
+                    background: "var(--bg-surface)", border: "1px solid var(--accent)",
+                    borderRadius: 6, color: "var(--text-main)", outline: "none",
+                    padding: "2px 7px", width: "100%", minWidth: 0,
+                    fontFamily: "var(--font-body), sans-serif",
+                    boxShadow: "0 0 0 2px rgba(201,162,39,0.15)",
+                  }}
+                />
+              ) : (
+                <span
+                  className="habit-name"
+                  style={{
+                    fontSize: 15, color: "var(--text-main)", fontWeight: 500,
+                    letterSpacing: "0.01em", display: "block",
+                    whiteSpace: "nowrap", overflow: "hidden",
+                    textOverflow: "ellipsis", transition: "color 0.18s", minWidth: 0,
+                  }}
+                >
+                  {habit.name}
+                </span>
+              )}
               <div className="habit-name-tip">{habit.name}</div>
             </div>
           </div>
-
           {/* Color picker popover — opens upward to avoid scroll */}
           {showColorPicker && (
             <div style={{
@@ -630,12 +670,37 @@ const DesktopHabitRowInner = memo(function DesktopHabitRowInner({
                   className="stat-text"
                   style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontFamily: "var(--font-mono), monospace", color: pctColor }}
                 >
-                  <IconClock size={14} color={pctColor} />
+                  {/* Circular progress ring */}
+                  <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0 }}>
+                    {/* Track */}
+                    <circle
+                      cx="7" cy="7" r="5"
+                      fill="none"
+                      stroke="var(--border-main)"
+                      strokeWidth="2"
+                    />
+                    {/* Fill */}
+                    <circle
+                      cx="7" cy="7" r="5"
+                      fill="none"
+                      stroke={pctColor}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(pct / 100) * 31.4} 31.4`}
+                      transform="rotate(-90 7 7)"
+                      style={{ transition: "stroke-dasharray 0.4s cubic-bezier(0.16,1,0.3,1)" }}
+                    />
+                  </svg>
                   {pct}%
                 </span>
               </Tip>
             </div>
             <div style={{ display: "flex", gap: 1 }}>
+              <Tip label="Edit name">
+                <button className="edit-btn" onClick={startEdit}>
+                  <Edit2 size={15} color="currentColor" />
+                </button>
+              </Tip>
               <Tip label="Heatmap">
                 <button className={`cal-btn${isCalendarExpanded ? " active" : ""}`} onClick={onToggleCalendar}>
                   <Calendar size={15} color="currentColor" />
@@ -858,6 +923,7 @@ type HabitGridProps = {
   habitColors: string[];
   openNotePopover: (habitId: string, date: string, x: number, y: number) => void;
   getNoteForCell: (habitId: string, date: string) => string;
+  renameHabit: (id: string, newName: string) => void;
 };
 
 export default function HabitGrid({
@@ -899,6 +965,7 @@ export default function HabitGrid({
   habitColors,
   openNotePopover,
   getNoteForCell,
+  renameHabit,
 }: HabitGridProps) {
   const [heatmapLogs, setHeatmapLogs] = useState<
     Record<string, Record<string, number>>
@@ -1447,48 +1514,51 @@ export default function HabitGrid({
                                               key={habit.id}
                                             >
                                               {(provided, snapshot) => (
-                                                <div
-                                                  ref={provided.innerRef}
-                                                  {...provided.draggableProps}
-                                                  className="habit-card"
-                                                  style={{
-                                                    ...provided.draggableProps.style,
-                                                    padding: "20px 20px",
-                                                    display: "flex",
-                                                    flexDirection: "column",
-                                                    alignItems: "stretch",
-                                                    background: snapshot.isDragging ? "#1a1a1a" : "#121212",
-                                                    zIndex: snapshot.isDragging ? 999 : "auto",
-                                                  }}
-                                                >
-                                                  <DesktopHabitRowInner
-                                                    habit={habit}
-                                                    dragHandleProps={provided.dragHandleProps}
-                                                    visibleDays={visibleDays}
-                                                    isCurrent={isCurrent}
-                                                    today={today}
-                                                    month={month}
-                                                    year={year}
-                                                    isFutureMonth={isFutureMonth}
-                                                    streak={streak}
-                                                    pct={pct}
-                                                    isCalendarExpanded={expandedCalendar === habit.id}
-                                                    setExpandedCalendar={setExpandedCalendar}
-                                                    removeHabit={removeHabit}
-                                                    cycleStatus={cycleStatus}
-                                                    pulsingDayIdx={pulsingDayIdx}
-                                                    hoveredCellRef={hoveredCellRef}
-                                                    user={user}
-                                                    supabase={supabase}
-                                                    heatmapLogs={heatmapLogs}
-                                                    setHeatmapLogs={setHeatmapLogs}
-                                                    updateHabitColor={updateHabitColor}
-                                                    habitColors={habitColors}
-                                                    openNotePopover={openNotePopover}
-                                                    getNoteForCell={getNoteForCell}
-                                                    isFirstHabit={catIndex === 0 && hi === 0}
-                                                  />
-                                                </div>
+                                                <PortalAwareItem snapshot={snapshot}>
+                                                  <div
+                                                    ref={provided.innerRef}
+                                                    {...provided.draggableProps}
+                                                    className="habit-card"
+                                                    style={{
+                                                      ...provided.draggableProps.style,
+                                                      padding: "20px 20px",
+                                                      display: "flex",
+                                                      flexDirection: "column",
+                                                      alignItems: "stretch",
+                                                      background: snapshot.isDragging ? "#1a1a1a" : "#121212",
+                                                      zIndex: snapshot.isDragging ? 999 : "auto",
+                                                    }}
+                                                  >
+                                                    <DesktopHabitRowInner
+                                                      habit={habit}
+                                                      dragHandleProps={provided.dragHandleProps}
+                                                      visibleDays={visibleDays}
+                                                      isCurrent={isCurrent}
+                                                      today={today}
+                                                      month={month}
+                                                      year={year}
+                                                      isFutureMonth={isFutureMonth}
+                                                      streak={streak}
+                                                      pct={pct}
+                                                      isCalendarExpanded={expandedCalendar === habit.id}
+                                                      setExpandedCalendar={setExpandedCalendar}
+                                                      removeHabit={removeHabit}
+                                                      cycleStatus={cycleStatus}
+                                                      pulsingDayIdx={pulsingDayIdx}
+                                                      hoveredCellRef={hoveredCellRef}
+                                                      user={user}
+                                                      supabase={supabase}
+                                                      heatmapLogs={heatmapLogs}
+                                                      setHeatmapLogs={setHeatmapLogs}
+                                                      updateHabitColor={updateHabitColor}
+                                                      habitColors={habitColors}
+                                                      openNotePopover={openNotePopover}
+                                                      getNoteForCell={getNoteForCell}
+                                                      isFirstHabit={catIndex === 0 && hi === 0}
+                                                      renameHabit={renameHabit}
+                                                    />
+                                                  </div>
+                                                </PortalAwareItem>
                                               )}
                                             </Draggable>
                                           );

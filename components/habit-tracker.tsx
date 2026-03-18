@@ -94,6 +94,7 @@ const HABIT_CSS = `
         :root.light .cat-action-btn { color: #5c5c58 !important; }
         :root.light .del-btn { color: #a0a09c !important; }
         :root.light .del-btn:hover { color: #ef4444 !important; background: rgba(239,68,68,0.1) !important; }
+        :root.light .edit-btn:hover { color: #3b82f6 !important; background: rgba(59,130,246,0.08) !important; }
         :root.light .month-nav-container { background: #ffffff !important; border-color: var(--border-main) !important; }
         :root.light .month-nav-text { color: #5c5c58 !important; }
         :root.light .delete-modal { background: #ffffff !important; border-color: var(--border-main) !important; }
@@ -170,6 +171,14 @@ const HABIT_CSS = `
         .habit-card:hover .cal-btn { opacity: 1; }
         .cal-btn:hover { color: var(--accent) !important; background: rgba(201,162,39,0.08) !important; }
         .cal-btn.active { opacity: 1; color: var(--accent) !important; }
+        .edit-btn {
+          opacity: 0; background: none; border: none; cursor: pointer;
+          color: #383838; line-height: 1;
+          transition: opacity 0.15s, color 0.15s, background 0.15s;
+          padding: 0.3125rem; border-radius: 0.375rem; display: flex; align-items: center;
+        }
+        .habit-card:hover .edit-btn { opacity: 1; }
+        .edit-btn:hover { color: #7eb8f7 !important; background: rgba(126,184,247,0.08) !important; }
 
         /* Habit name tooltip */
         .habit-name-wrap {
@@ -633,6 +642,27 @@ export default function HabitTracker() {
         };
       });
 
+      // ── Auto-miss: mark past NONE days as MISSED ──────────────────────────
+      const nowDate = new Date();
+      const isCurrentMonth = nowDate.getFullYear() === y && nowDate.getMonth() === m;
+      if (isCurrentMonth) {
+        const todayNum = nowDate.getDate();
+        const autoMissUpserts: { habit_id: string; date: string; status: number }[] = [];
+        assembled.forEach((habit) => {
+          for (let d = 1; d < todayNum; d++) {
+            const dateStr = `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+            if (habit.createdAt && dateStr < habit.createdAt) continue;
+            if (habit.days[d - 1] === STATUS.NONE) {
+              habit.days[d - 1] = STATUS.MISSED;
+              autoMissUpserts.push({ habit_id: habit.id, date: dateStr, status: STATUS.MISSED });
+            }
+          }
+        });
+        if (autoMissUpserts.length > 0) {
+          supabase.from("habit_logs").upsert(autoMissUpserts, { onConflict: "habit_id,date" });
+        }
+      }
+
       habitsCacheRef.current.set(cacheKey, assembled);
       if (viewKeyRef.current === cacheKey) {
         setHabits(assembled);
@@ -798,6 +828,15 @@ export default function HabitTracker() {
     setHabits((prev) => prev.map((h) => h.id === id ? { ...h, color: color ?? undefined } : h));
     if (user) {
       await supabaseRef.current.from("habits").update({ color }).eq("id", id);
+    }
+  }, [user]);
+
+  const renameHabit = useCallback(async (id: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setHabits((prev) => prev.map((h) => h.id === id ? { ...h, name: trimmed } : h));
+    if (user) {
+      await supabaseRef.current.from("habits").update({ name: trimmed }).eq("id", id);
     }
   }, [user]);
 
@@ -986,15 +1025,18 @@ export default function HabitTracker() {
   // Sort groupedHabits by sortMode
   // -------------------------------------------------------------------------
   const sortedGroupedHabits = useMemo(() => {
-    if (sortMode === "manual") return groupedHabits;
     const result: Record<string, typeof habits> = {};
     Object.entries(groupedHabits).forEach(([cat, catHabits]) => {
-      result[cat] = [...catHabits].sort((a, b) => {
-        const sa = habitStats[a.id];
-        const sb = habitStats[b.id];
-        if (sortMode === "streak") return (sb?.streak ?? 0) - (sa?.streak ?? 0);
-        return (sb?.pct ?? 0) - (sa?.pct ?? 0);
-      });
+      if (sortMode === "manual") {
+        result[cat] = catHabits;
+      } else {
+        result[cat] = [...catHabits].sort((a, b) => {
+          const sa = habitStats[a.id];
+          const sb = habitStats[b.id];
+          if (sortMode === "streak") return (sb?.streak ?? 0) - (sa?.streak ?? 0);
+          return (sb?.pct ?? 0) - (sa?.pct ?? 0);
+        });
+      }
     });
     return result;
   }, [groupedHabits, habitStats, sortMode]);
@@ -1028,6 +1070,7 @@ export default function HabitTracker() {
   const onDragEnd = (result: DropResult) => {
     const { source, destination, type } = result;
     if (!destination) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
     if (type === "category") {
       const newOrder = Array.from(sortedCategories);
@@ -1040,29 +1083,49 @@ export default function HabitTracker() {
     if (type === "habit") {
       const srcCat = source.droppableId;
       const destCat = destination.droppableId;
+      const supabase = supabaseRef.current;
 
       if (srcCat === destCat) {
         const arr = Array.from(groupedHabits[srcCat]);
         const [removed] = arr.splice(source.index, 1);
         arr.splice(destination.index, 0, removed);
+        const updated = arr.map((h, i) => ({ ...h, sort_order: i }));
         setHabits((prev) => [
           ...prev.filter((h) => (h.category || "Uncategorized") !== srcCat),
-          ...arr,
+          ...updated,
         ]);
+        if (user) {
+          updated.forEach((h) => {
+            supabase.from("habits").update({ sort_order: h.sort_order }).eq("id", h.id);
+          });
+        }
       } else {
         const srcArr = Array.from(groupedHabits[srcCat]);
         const destArr = Array.from(groupedHabits[destCat] || []);
         const [removed] = srcArr.splice(source.index, 1);
-        removed.category = destCat === "Uncategorized" ? "" : destCat;
+        const newCategory = destCat === "Uncategorized" ? "" : destCat;
+        removed.category = newCategory;
         destArr.splice(destination.index, 0, removed);
+        const updatedSrc  = srcArr.map((h, i) => ({ ...h, sort_order: i }));
+        const updatedDest = destArr.map((h, i) => ({ ...h, sort_order: i }));
         setHabits((prev) => [
           ...prev.filter((h) => {
             const c = h.category || "Uncategorized";
             return c !== srcCat && c !== destCat;
           }),
-          ...srcArr,
-          ...destArr,
+          ...updatedSrc,
+          ...updatedDest,
         ]);
+        if (user) {
+          supabase.from("habits").update({ category: newCategory, sort_order: destination.index }).eq("id", removed.id);
+          updatedSrc.forEach((h) => {
+            supabase.from("habits").update({ sort_order: h.sort_order }).eq("id", h.id);
+          });
+          updatedDest.forEach((h) => {
+            if (h.id !== removed.id)
+              supabase.from("habits").update({ sort_order: h.sort_order }).eq("id", h.id);
+          });
+        }
       }
     }
   };
@@ -1363,6 +1426,7 @@ export default function HabitTracker() {
           onTap={onTap}
           onQuickLog={onQuickLog}
           updateHabitColor={updateHabitColor}
+          renameHabit={renameHabit}
           habitColors={HABIT_COLORS}
           openNotePopover={openNotePopover}
           getNoteForCell={getNoteForCell}

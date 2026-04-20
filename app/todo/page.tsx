@@ -27,6 +27,18 @@ const TODO_CSS = `
     border: 1px solid var(--border-main);
     border-radius: 12px;
     transition: border-color 0.2s;
+    animation: todoEnter 0.2s ease both;
+  }
+  @keyframes todoEnter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .todo-spinner {
+    animation: spin 1s linear infinite;
+    display: flex;
   }
   .todo-row-main {
     display: flex;
@@ -117,6 +129,10 @@ const TODO_CSS = `
     transition: color 0.15s;
   }
   .completed-header:hover { color: var(--text-main); }
+  .todo-empty {
+    animation: todoEnter 0.4s 0.2s ease both;
+    opacity: 0;
+  }
   @media (max-width: 768px) {
     .todo-page { padding: 0px 16px 88px !important; }
     .todo-row { padding: 14px 14px !important; }
@@ -125,7 +141,7 @@ const TODO_CSS = `
 `;
 
 // ---------------------------------------------------------------------------
-// TodoRow
+// TodoRow — plain div with CSS enter animation; no JS animation overhead
 // ---------------------------------------------------------------------------
 type TodoRowProps = {
   todo: Todo;
@@ -151,12 +167,8 @@ const TodoRow = memo(function TodoRow({
   onEditCancel,
 }: TodoRowProps) {
   return (
-    <motion.div
+    <div
       className="todo-row"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      style={{ willChange: "transform, opacity" }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-focus)")}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-main)")}
     >
@@ -240,7 +252,7 @@ const TodoRow = memo(function TodoRow({
           <Trash2 size={16} />
         </button>
       )}
-    </motion.div>
+    </div>
   );
 });
 
@@ -380,39 +392,35 @@ export default function TodoList() {
       {/* Loading */}
       {loading && (
         <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
-          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+          <div className="todo-spinner">
             <Loader2 size={24} color="var(--text-muted)" />
-          </motion.div>
+          </div>
         </div>
       )}
 
       {!loading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-          {/* Active todos */}
-          <AnimatePresence>
-            {activeTodos.map((todo) => (
-              <TodoRow
-                key={todo.id}
-                todo={todo}
-                isEditing={editingId === todo.id}
-                editText={editText}
-                onToggle={toggleTodo}
-                onDelete={deleteTodo}
-                onEditStart={startEdit}
-                onEditChange={handleEditChange}
-                onEditSave={saveEdit}
-                onEditCancel={cancelEdit}
-              />
-            ))}
-          </AnimatePresence>
+          {/* Active todos — CSS enter animation, no JS animation overhead */}
+          {activeTodos.map((todo) => (
+            <TodoRow
+              key={todo.id}
+              todo={todo}
+              isEditing={editingId === todo.id}
+              editText={editText}
+              onToggle={toggleTodo}
+              onDelete={deleteTodo}
+              onEditStart={startEdit}
+              onEditChange={handleEditChange}
+              onEditSave={saveEdit}
+              onEditCancel={cancelEdit}
+            />
+          ))}
 
           {/* Empty state — only when no todos at all */}
           {todos.length === 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
+            <div
+              className="todo-empty"
               style={{ textAlign: "center", padding: "80px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}
             >
               <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-surface)", border: "1px dashed var(--accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -422,7 +430,7 @@ export default function TodoList() {
                 <p style={{ color: "var(--text-main)", fontWeight: 600, marginBottom: 4 }}>You&apos;re all caught up</p>
                 <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Add a task above to get started.</p>
               </div>
-            </motion.div>
+            </div>
           )}
 
           {/* Completed section */}
@@ -463,7 +471,7 @@ export default function TodoList() {
                 </span>
               </div>
 
-              {/* Completed rows */}
+              {/* Completed rows — keep motion for height: 0 → auto collapse animation */}
               <AnimatePresence>
                 {!completedCollapsed && (
                   <motion.div
@@ -474,22 +482,20 @@ export default function TodoList() {
                     style={{ overflow: "hidden" }}
                   >
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4, opacity: 0.65 }}>
-                      <AnimatePresence>
-                        {completedTodos.map((todo) => (
-                          <TodoRow
-                            key={todo.id}
-                            todo={todo}
-                            isEditing={false}
-                            editText=""
-                            onToggle={toggleTodo}
-                            onDelete={deleteTodo}
-                            onEditStart={startEdit}
-                            onEditChange={handleEditChange}
-                            onEditSave={saveEdit}
-                            onEditCancel={cancelEdit}
-                          />
-                        ))}
-                      </AnimatePresence>
+                      {completedTodos.map((todo) => (
+                        <TodoRow
+                          key={todo.id}
+                          todo={todo}
+                          isEditing={false}
+                          editText=""
+                          onToggle={toggleTodo}
+                          onDelete={deleteTodo}
+                          onEditStart={startEdit}
+                          onEditChange={handleEditChange}
+                          onEditSave={saveEdit}
+                          onEditCancel={cancelEdit}
+                        />
+                      ))}
                     </div>
                   </motion.div>
                 )}

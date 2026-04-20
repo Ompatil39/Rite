@@ -3,31 +3,43 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, CheckSquare, User } from "lucide-react";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 
 export default function FloatingNavLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isVisible, setIsVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
+  // Use a ref for lastScrollY — it's only read inside the event handler,
+  // never rendered, so it must not be React state (avoids full-tree re-renders).
+  const lastScrollYRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      if (window.innerWidth <= 768) {
-        if (currentScrollY > lastScrollY && currentScrollY > 50) {
-          setIsVisible(false); // Scroll down
+      // Cap updates to one per animation frame (~16 ms) regardless of scroll
+      // event rate — this prevents layout thrashing on fast scrolls.
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const currentScrollY = window.scrollY;
+        if (window.innerWidth <= 768) {
+          if (currentScrollY > lastScrollYRef.current && currentScrollY > 50) {
+            setIsVisible(false); // Scroll down
+          } else {
+            setIsVisible(true); // Scroll up
+          }
         } else {
-          setIsVisible(true); // Scroll up
+          setIsVisible(true);
         }
-      } else {
-        setIsVisible(true);
-      }
-      setLastScrollY(currentScrollY);
+        lastScrollYRef.current = currentScrollY;
+      });
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [lastScrollY]);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   const links = useMemo(() => [
     { href: "/", label: "Habits", icon: LayoutDashboard },

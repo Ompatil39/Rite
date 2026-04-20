@@ -23,6 +23,39 @@ import EmptyState from "./EmptyState";
 import HabitComposer from "./HabitComposer";
 import OnboardingTour from "./OnboardingTour";
 
+// ---------------------------------------------------------------------------
+// localStorage helpers — persist habit data for instant paint on return visits
+// ---------------------------------------------------------------------------
+const LS_USER_KEY = "rite_uid";
+const LS_HABITS_TTL = 5 * 60 * 1000; // 5 minutes
+
+function lsHabitsKey(uid: string, year: number, month: number) {
+  return `rite_habits_${uid}_${year}-${month}`;
+}
+
+function readHabitsCache(uid: string, year: number, month: number): Habit[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(lsHabitsKey(uid, year, month));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { habits: Habit[]; ts: number };
+    if (Date.now() - parsed.ts < LS_HABITS_TTL) return parsed.habits;
+  } catch {
+    // Ignore JSON parse / quota errors
+  }
+  return null;
+}
+
+function writeHabitsCache(uid: string, year: number, month: number, habits: Habit[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(lsHabitsKey(uid, year, month), JSON.stringify({ habits, ts: Date.now() }));
+    localStorage.setItem(LS_USER_KEY, uid);
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 // Shared tooltip wrapper — same design as HabitGrid's Tip
 function Tip({ label, children, down = false }: { label: string; children: React.ReactNode; down?: boolean }) {
   return (
@@ -664,6 +697,8 @@ export default function HabitTracker() {
       }
 
       habitsCacheRef.current.set(cacheKey, assembled);
+      // Persist to localStorage so returning users get instant paint next visit
+      writeHabitsCache(userId, y, m, assembled);
       if (viewKeyRef.current === cacheKey) {
         setHabits(assembled);
         activeHabitsKeyRef.current = cacheKey;
@@ -680,18 +715,32 @@ export default function HabitTracker() {
     }
   }, [month, year, user, loadHabitsFromDB]);
 
-  // Keep cache in sync with the currently displayed month
+  // Keep in-memory cache and localStorage in sync with the displayed month.
+  // Runs after any mutation so the persistent cache always reflects current state.
   useEffect(() => {
     const key = activeHabitsKeyRef.current;
     if (!user || !key) return;
     habitsCacheRef.current.set(key, habits);
-  }, [habits, user]);
+    writeHabitsCache(user.id, year, month, habits);
+  }, [habits, user, year, month]);
 
   // -------------------------------------------------------------------------
   // Mount / auth
   // -------------------------------------------------------------------------
   useEffect(() => {
     setMounted(true);
+
+    // Pre-populate from localStorage so returning users skip the skeleton entirely.
+    // This runs synchronously before the async getUser() call resolves.
+    const lastUid = localStorage.getItem(LS_USER_KEY);
+    if (lastUid) {
+      const n = new Date();
+      const cached = readHabitsCache(lastUid, n.getFullYear(), n.getMonth());
+      if (cached) {
+        setHabits(cached);
+        setLoading(false);
+      }
+    }
 
     // Refresh `now` when the calendar day rolls over (checked every minute)
     const dayRefresh = setInterval(() => {
@@ -731,6 +780,9 @@ export default function HabitTracker() {
           habitsCacheRef.current.clear();
           activeHabitsKeyRef.current = null;
           viewKeyRef.current = null;
+          // Clear the persisted UID so the next cold load doesn't pre-populate
+          // with a different user's habits.
+          localStorage.removeItem(LS_USER_KEY);
         }
       },
     );

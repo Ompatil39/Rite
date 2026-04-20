@@ -355,6 +355,18 @@ export default function ProfileDashboard() {
           box-shadow:
             0 28px 64px rgba(0, 0, 0, 0.24),
             inset 0 1px 0 rgba(255, 255, 255, 0.03);
+          animation: profileEnter 0.5s 0.1s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        @keyframes profileEnter {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes statCardEnter {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .stat-card-animated {
+          animation: statCardEnter 0.35s cubic-bezier(0.16,1,0.3,1) both;
         }
         .auth-icon {
           color: rgba(201, 162, 39, 0.82);
@@ -420,11 +432,8 @@ export default function ProfileDashboard() {
       `}</style>
 
       {!isLoggedIn ? (
-        <motion.div
+        <div
           className="auth-card"
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           style={{
             borderRadius: 24,
             padding: "72px 44px",
@@ -437,27 +446,32 @@ export default function ProfileDashboard() {
             overflow: "hidden",
           }}
         >
-          <motion.div
-            initial={{ scale: 0.92, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.35, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
+          <div
             className="auth-icon"
             style={{ position: "relative", zIndex: 1 }}
           >
             <User size={28} strokeWidth={1.8} />
-          </motion.div>
+          </div>
 
           <div style={{ position: "relative", zIndex: 1 }}>
             <h2 className="auth-title">Your progress, everywhere</h2>
             <p className="auth-subtitle">Secure Google sync for your habits and to-dos.</p>
           </div>
 
-          <motion.button
+          <button
             className="auth-button"
-            whileHover={{ scale: 1.01, y: -1 }}
-            whileTap={{ scale: 0.99 }}
             onClick={handleLogin}
-            style={{ cursor: "pointer", position: "relative", zIndex: 1, marginTop: 8 }}
+            style={{
+              cursor: "pointer",
+              position: "relative",
+              zIndex: 1,
+              marginTop: 8,
+              transition: "transform 0.15s, opacity 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.01) translateY(-1px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ""; }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.99)"; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1.01) translateY(-1px)"; }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
               <path d="M21.805 10.023H12.24v3.957h5.484c-.236 1.273-.944 2.351-2.006 3.075v2.554h3.24c1.897-1.747 2.99-4.319 2.99-7.366 0-.719-.065-1.408-.143-2.22Z" fill="#4285F4" />
@@ -466,8 +480,8 @@ export default function ProfileDashboard() {
               <path d="M12.24 7.03c1.474 0 2.796.507 3.838 1.503l2.88-2.88C17.218 4.03 14.946 3 12.24 3A10.034 10.034 0 0 0 3.267 8.541l3.348 2.635C7.408 8.798 9.623 7.03 12.24 7.03Z" fill="#EA4335" />
             </svg>
             Continue with Google
-          </motion.button>
-        </motion.div>
+          </button>
+        </div>
       ) : (
         <div className="profile-container" style={{ display: "flex", flexDirection: "column", gap: 32 }}>
           <AnimatePresence>
@@ -577,12 +591,10 @@ export default function ProfileDashboard() {
             }}
           >
             {statCards.map((card, idx) => (
-              <motion.div
+              <div
                 key={card.label}
-                className="stat-card"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, delay: 0.05 * idx, ease: [0.16, 1, 0.3, 1] }}
+                className="stat-card stat-card-animated"
+                style={{ animationDelay: `${0.05 * idx}s` }}
               >
                 {/* Label row */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, color: card.color }}>
@@ -608,7 +620,7 @@ export default function ProfileDashboard() {
                     {card.visual}
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>

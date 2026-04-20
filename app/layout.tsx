@@ -10,17 +10,21 @@ import Script from "next/script"; // <-- added
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-body',
+  display: 'swap',
 });
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
+  display: 'swap',
+  preload: false,
 });
 
 const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
+  weight: ['400', '600', '700'],
   variable: '--font-display',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -29,11 +33,19 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : null;
+
   return (
     <html
       lang="en"
       className={`dark ${inter.variable} ${jetbrainsMono.variable} ${cormorant.variable}`}
     >
+      <head>
+        {supabaseHost && (
+          <link rel="preconnect" href={`https://${supabaseHost}`} />
+        )}
+      </head>
       <body
         suppressHydrationWarning
         style={{

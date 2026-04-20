@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { motion } from "motion/react";
 import { createClient } from "@/utils/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { MONTHS, S } from "./constants";
@@ -20,6 +19,18 @@ const STATUS_COLORS: Record<number, string> = {
   2: "var(--status-partial)",
   3: "var(--status-missed)",
 };
+
+const HEATMAP_CSS = `
+  @keyframes heatmapExpand {
+    from { opacity: 0; max-height: 0; }
+    to   { opacity: 1; max-height: 200px; }
+  }
+  .heatmap-enter {
+    overflow: hidden;
+    animation: heatmapExpand 0.25s cubic-bezier(0.16,1,0.3,1) both;
+    margin-top: 8px;
+  }
+`;
 
 export default function HeatmapCalendar({
   habitId,
@@ -113,12 +124,8 @@ export default function HeatmapCalendar({
   }, [logs]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
-      style={{ overflow: "hidden", marginTop: 8 }}
-    >
+    <div className="heatmap-enter">
+      <style>{HEATMAP_CSS}</style>
       <div
         style={{
           background: "var(--bg-base)",
@@ -195,6 +202,6 @@ export default function HeatmapCalendar({
           </>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
